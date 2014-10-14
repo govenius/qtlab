@@ -282,9 +282,9 @@ class Tektronix_AFG3252(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : Set amplitude of channel %s to %.6f'
+        logging.debug(__name__ + ' : Set amplitude of channel %s to %.6e'
             % (channel, amp))
-        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:AMPL %.6f' % (channel, 2*amp))
+        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:AMPL %.6e' % (channel, 2*amp))
 
 
     def do_get_phase(self, channel):
@@ -314,9 +314,9 @@ class Tektronix_AFG3252(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : Set phase of channel %s to %.6f rad.'
+        logging.debug(__name__ + ' : Set phase of channel %s to %.6e rad.'
             % (channel, amp))
-        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6f' % (channel, amp))
+        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6e' % (channel, amp))
 
 
 
@@ -344,8 +344,8 @@ class Tektronix_AFG3252(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : Set offset of channel %s to %.6f' % (channel, offset))
-        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:OFFS %.6f' % (channel, offset))
+        logging.debug(__name__ + ' : Set offset of channel %s to %.6e' % (channel, offset))
+        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:OFFS %.6e' % (channel, offset))
 
 
     def do_get_frequency(self, channel):
@@ -410,7 +410,7 @@ class Tektronix_AFG3252(Instrument):
         duty = f*width
         if not (duty > 1e-5 and duty < 1-1e-5):
           logging.warn('The duty cycle of the pulse waveform must be between 0.001\% and 99.999\%, not %g.' % duty)
-        self._visainstrument.write('SOUR%s:PULS:WIDT %.6f' % (channel, width))
+        self._visainstrument.write('SOUR%s:PULS:WIDT %.6e' % (channel, width))
 
     def do_get_pulse_delay(self, channel):
         '''
@@ -440,7 +440,7 @@ class Tektronix_AFG3252(Instrument):
         f = self.get('ch%d_frequency' % channel)
         w = self.get('ch%d_pulse_width' % channel)
         if delay + w > 1./f: logging.warn('AFG ch%d delay + pulse width is more (%g s) than the period of the waveform (%g s).' % (delay+w, 1./f))
-        self._visainstrument.write('SOUR%s:PULS:DEL %.6f' % (channel, delay))
+        self._visainstrument.write('SOUR%s:PULS:DEL %.6e' % (channel, delay))
         
     def do_get_load_impedance(self, channel):
         '''
