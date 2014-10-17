@@ -342,6 +342,7 @@ class Plot():
     logging.info('Executing %s. Log messages in %s.', plot_script, log_file)
 
     log_file = open(log_file, 'a')
+    print p_args
     subprocess.Popen(p_args, cwd=out_dir,
                      stdin=None, stdout=log_file, stderr=log_file)
 
