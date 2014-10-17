@@ -179,7 +179,11 @@ class Plot():
 
   def get_name(self, path_friendly=False):
     '''Get plot name.'''
-    return self._name if not path_friendly else self._name.strip().replace(' ','_').replace('/','-').replace('\\','_')
+    if not path_friendly:
+      return self._name
+    else:
+      # leave out non-alphanumeric characters
+      return "".join(x if x.isalnum() else '_' for x in self._name)
 
   def get_output_dir(self):
     '''Get output dir name.'''
