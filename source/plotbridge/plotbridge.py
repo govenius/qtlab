@@ -591,10 +591,11 @@ class Plot():
 
     if slowcoordinate == None and title != None and len(title) > 0:
       # Attempt parsing the slow coordinate value for title, if none was specified.
-      m = re.search(r'([e\d\.\+\-]+)', title)
-      if m and len(m.groups()) == 1: # don't try to guess if multiple matches
+      m = re.findall(r'([e\d\.\+\-]+)', title)
+      if len(m) == 1: # don't try to guess if multiple matches
         try:
-          slowcoordinate = float(m.group(1))
+          slowcoordinate = float(m[0])
+          logging.info('Assuming %f in "%s" is a "slow coordinate". It will be used in multidimensional plots.')
         except:
           pass
 
