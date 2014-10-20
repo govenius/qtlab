@@ -28,6 +28,10 @@ for f in os.listdir('.'):
       logging.exception('Failed to load %s', f)
       raise
 
+if len(all_traces) == 1:
+  # duplicate the trace if there is exactly one, otherwise nothing is plotted...
+  all_traces.append(dict( (k,v) for k,v in all_traces[0].iteritems() ))
+
 # Attempt to read slow-axis values from the plot script
 plot_script = None
 for f in os.listdir('.'):
@@ -46,14 +50,20 @@ if plot_script != None:
       line = f.readline()
 
 # Use parsed values if all traces have one
+# and they are all different.
 ntraces_with_slow_coord = np.sum([ 'slowcoord' in t.keys() for t in all_traces ])
-if ntraces_with_slow_coord != len(all_traces):
+unique_slow_coords = len(np.unique([ t['slowcoord'] for t in all_traces if 'slowcoord' in t.keys() ]))
+if ntraces_with_slow_coord != len(all_traces) or unique_slow_coords != len(all_traces):
   # otherwise fall back to ordering my modification time (and using trace index as slow coordinate)
   all_traces = sorted(all_traces, key=lambda t: t['mtime'])
   for i in range(len(all_traces)): all_traces[i]['slowcoord'] = i
   if ntraces_with_slow_coord > 0:
-    logging.warn('only %d of %d traces have a slow coordinate specified. Falling back to trace number.',
-                 ntraces_with_slow_coord, len(all_traces) )
+    if ntraces_with_slow_coord != len(all_traces):
+      logging.warn('Only %d of %d traces have a slow coordinate specified. Falling back to trace number.',
+                   ntraces_with_slow_coord, len(all_traces) )
+    if unique_slow_coords != len(all_traces):
+      logging.warn('Only %d of %d slow coordinates are unique. Falling back to trace number.',
+                   unique_slow_coords, len(all_traces) )
 
 # Sort the traces by slow value
 all_traces = sorted(all_traces, key=lambda t: t['slowcoord'])
