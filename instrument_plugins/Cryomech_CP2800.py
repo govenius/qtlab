@@ -190,7 +190,7 @@ class Cryomech_CP2800(Instrument):
       getattr(self, 'get_all')()
 
     except Exception as e:
-      logging.debug('Failed to auto-update compressor readings (attempt %d): %s' % (failed_attempts, str(e)))
+      logging.debug('Failed to auto-update compressor readings: %s' % (str(e)))
 
     return True # keep calling back
         
@@ -259,17 +259,17 @@ class Cryomech_CP2800(Instrument):
             lastlen = len(m)
             m += serial_connection.read()
             if lastlen == len(m): assert False, 'Timeout on serial port read.'
+          logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
+          return m
         finally:
           serial_connection.close()
 
-        qt.msleep(.01)
+        qt.msleep(1. + attempt**2)
         
       except:
         logging.exception('Attempt %d to communicate with compressor failed', attempt)
 
-      logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
-      return m
-
+    assert False, 'All attempts to communicate with the compressor failed.'
 
   def __read_int(self, hash_code, array_index=0):
     assert len(hash_code) == 2, 'Specify hash code as a tuple of ints, e.g. (0x35, 0x74) for oil temperature (given in hex in the manual).'

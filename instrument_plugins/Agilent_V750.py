@@ -252,16 +252,17 @@ class Agilent_V750(Instrument):
             lastlen = len(m)
             m += serial_connection.read()
             if lastlen == len(m): assert False, 'Timeout on serial port read.'
+          logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
+          return m
         finally:
           serial_connection.close()
 
-        qt.msleep(.01)
+        qt.msleep(1. + attempt**2)
         
       except:
         logging.exception('Attempt %d to communicate with turbo failed', attempt)
 
-      logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
-      return m
+    assert False, 'All attempts to communicate with the turbo failed.'
 
 
   def __read_value(self, value, log=False):
