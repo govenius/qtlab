@@ -105,6 +105,7 @@ set key left top
 
 {% if traces %}
 set pm3d map
+set pm3d corners2color c1
 #set pm3d interpolate 2,2
 splot \
    "image_matrix.gnuplot_binary_matrix" \

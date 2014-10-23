@@ -14,6 +14,7 @@ import struct
 import shutil
 import uuid
 import re
+from scipy import interpolate
 
 # Collect all traces
 all_traces = []
@@ -21,16 +22,18 @@ for f in os.listdir('.'):
   if f.startswith('trace_') and f.endswith('.npy'):
     try:
       # This assumes float data type and 2 column format!!!
-      all_traces.append({ 'fname': f,
-                          'trace_data': np.fromfile(f).reshape((-1,2)),
-                          'mtime': os.path.getmtime(f) })
+      trace_data = np.fromfile(f).reshape((-1,2))
+      if len(trace_data) > 0:
+        all_traces.append({ 'fname': f,
+                            'trace_data': trace_data,
+                            'mtime': os.path.getmtime(f) })
     except:
       logging.exception('Failed to load %s', f)
       raise
 
-if len(all_traces) == 1:
-  # duplicate the trace if there is exactly one, otherwise nothing is plotted...
-  all_traces.append(dict( (k,v) for k,v in all_traces[0].iteritems() ))
+#if len(all_traces) == 1:
+#  # duplicate the trace if there is exactly one, otherwise nothing is plotted...
+#  all_traces.append(dict( (k,v) for k,v in all_traces[0].iteritems() ))
 
 # Attempt to read slow-axis values from the plot script
 plot_script = None
@@ -68,21 +71,42 @@ if ntraces_with_slow_coord != len(all_traces) or unique_slow_coords != len(all_t
 # Sort the traces by slow value
 all_traces = sorted(all_traces, key=lambda t: t['slowcoord'])
 
-# Figure out the length of the longest trace
-longest_trace = np.argmax([ len(t['trace_data']) for t in all_traces ])
-ncols = len(all_traces[longest_trace]['trace_data'])
+x_min = min( t['trace_data'][:,0].min() for t in all_traces )
+x_max = max( t['trace_data'][:,0].max() for t in all_traces )
 
-#print all_traces[longest_trace]
+# Figure out the smallest division dx in the x direction,
+def smallest_division(trace_data):
+  if len(trace_data) < 2: return np.inf
+  a = np.abs(np.diff(trace_data[:,0]))
+  return a[a>0].min()
 
-# Use the longest trace as reference for aligning the columns in different traces (based on x value)
-def x_to_col_number(x):
-  return [ np.argmin(np.abs( all_traces[longest_trace]['trace_data'][:,0] - xx )) for xx in x ]
+dx = min( smallest_division(t['trace_data']) for t in all_traces )
+if not np.isfinite(dx): dx = 1.  # This should only happen if all traces have just a single point.
+
+# Use it as the fundamental pixel width "dx" in the image
+# Figure out how many columns that implies
+ncols = 1 + int((x_max - x_min) / dx)
 
 # Allocate the "image" matrix for storing all traces.
-img = np.zeros((len(all_traces), ncols), dtype=np.float) + np.nan
+img = np.zeros((2*len(all_traces), ncols), dtype=np.float) + np.nan
 logging.info('Output image size: %s', img.shape)
+
+# Fill it with the nearest value (in x) for each pixel.
+# Leave parts outside the domain of each trace as np.nan
 for i,t in enumerate(all_traces):
-  img[i, x_to_col_number(t['trace_data'][:,0])] = t['trace_data'][:,1]
+  sorted_trace = t['trace_data'][ t['trace_data'][:,0].argsort() ] # required by interp1d
+  first_col = int(np.round((sorted_trace[0,0] - x_min)/dx))
+  cols_in_trace = int(1 + (sorted_trace[-1,0] - sorted_trace[0,0])/dx)
+  logging.debug('slow = %g from %g to %g.', t['slowcoord'],
+                sorted_trace[0,0], sorted_trace[0,0] + cols_in_trace*dx)
+
+  if cols_in_trace == 1:
+    img[i,first_col] = sorted_trace[:,1]
+  else:
+    interpolated_trace = interpolate.interp1d(sorted_trace[:,0], sorted_trace[:,1], kind='nearest')
+    for j in range(cols_in_trace):
+      x = sorted_trace[0,0] + j*dx
+      img[i,first_col+j] = interpolated_trace(x)
 
 
 #
@@ -97,18 +121,26 @@ for i,t in enumerate(all_traces):
 #
 # All numbers (inluding the number of points) are specified as single-precision floats.
 
+horizontal_axis_vals = x_min + dx*np.arange(ncols)
+
+# Figure out the smallest division dy in the y direction,
+dy = ( np.abs(np.diff(np.array([ t['slowcoord'] for t in all_traces ]))).min()
+       if len(all_traces) > 1 else 1. )
+
 output_fname = 'image_matrix.gnuplot_binary_matrix'
 tmp_ext = uuid.uuid4().hex
 with open(output_fname + tmp_ext, 'wb') as fout:
 
   # first line consists of Nypts, y0, y1, ...
   fmt = '<f%uf' % img.shape[1]
-  fout.write(struct.pack(fmt, img.shape[1], *(all_traces[longest_trace]['trace_data'][:,0]) ))
+  fout.write(struct.pack(fmt, img.shape[1], *horizontal_axis_vals ))
 
-  # following lines consist of xi, zi,0, zi,1, ...
+  # following lines consist of xi, <zi,0>, <zi,1>, ...
   fmt = '<f%uf' % img.shape[1]
   for j in range(len(all_traces)):
+    # Write each row twice. Otherwise pm3d doesn't plot isolated rows surrounded by NaNs
     fout.write(struct.pack(fmt, all_traces[j]['slowcoord'], *(img[j,:]) ))
+    fout.write(struct.pack(fmt, all_traces[j]['slowcoord'] + dy/2., *(img[j,:]) ))
 
 # Overwrite the old file atomically
 shutil.move(output_fname + tmp_ext, output_fname)
