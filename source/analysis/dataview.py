@@ -360,13 +360,13 @@ class DataView():
 
         if use_sweep_direction:
           for i in range(1,len(dx)):
-              if dx[i] == 0: dx[i]=dx[i-1] # this is necessary to detect changes in direction, when the end point is repeated
-          change_in_sign = (1 + np.array(np.where(dx[1:] * dx[:-1] < 0),dtype=np.int).reshape((-1))).tolist()
+              if i+1 < len(dx) and dx[i] == 0: dx[i]=dx[i+1] # this is necessary to detect changes in direction, when the end point is repeated
+          change_in_sign = (2 + np.array(np.where(dx[1:] * dx[:-1] < 0),dtype=np.int).reshape((-1))).tolist()
 
           # the direction changing twice in a row means that sweeps are being done repeatedly
           # in the same direction.
           for i in range(len(change_in_sign)-1, 0, -1):
-            if change_in_sign[i]-change_in_sign[i-1] == 1: del change_in_sign[i-1]
+            if change_in_sign[i]-change_in_sign[i-1] == 1: del change_in_sign[i]
 
           if len(change_in_sign) == 0: return np.array([[0, len(sdim)]])
 
