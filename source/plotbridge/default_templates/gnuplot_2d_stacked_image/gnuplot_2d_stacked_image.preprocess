@@ -85,7 +85,7 @@ if not np.isfinite(dx): dx = 1.  # This should only happen if all traces have ju
 
 # Use it as the fundamental pixel width "dx" in the image
 # Figure out how many columns that implies
-ncols = 1 + int((x_max - x_min) / dx)
+ncols = 1 + int(np.ceil( (x_max - x_min) / dx ))
 
 # Allocate the "image" matrix for storing all traces.
 img = np.zeros((2*len(all_traces), ncols), dtype=np.float) + np.nan
