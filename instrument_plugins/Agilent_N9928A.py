@@ -622,7 +622,7 @@ class Agilent_N9928A(Instrument):
         '''
         Return the number of traces currently enabled.
         '''
-        return {'D1': 1, 'D2': 2, 'D12H': 2, 'D1123': 3, 'D12_34': 4}[self.get_multi_trace()]
+        return {'D1': 1, 'D2': 2, 'D12H': 2, 'D1123': 3, 'D12_34': 4, 'D1234': 4}[self.get_multi_trace()]
 
     def get_s_parameters_on_screen(self, sparams=None):
         '''
