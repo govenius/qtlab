@@ -104,8 +104,9 @@ set key left top
 
 
 {% if traces %}
-set pm3d map
-set pm3d corners2color c1
+#set pm3d
+set pm3d map # map projects the 3D surface onto the xy plane
+set pm3d corners2color c1 # comment this out to take the mean of nearby points instead
 #set pm3d interpolate 2,2
 splot \
    "image_matrix.gnuplot_binary_matrix" \
