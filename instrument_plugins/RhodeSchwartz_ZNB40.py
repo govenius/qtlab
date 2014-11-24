@@ -61,8 +61,6 @@ class RhodeSchwartz_ZNB40(Instrument):
         self._freq_unit = 1
         self._freq_unit_symbol = 'Hz'
         
-        self._channel_to_s = { 1: 'S11', 2: 'S21', 3: 'S12', 4: 'S22' }
-        self._s_to_channel = dict([(v,k) for k,v in self._channel_to_s.iteritems()])
 
         # Add parameters to wrapper
 
@@ -167,13 +165,24 @@ class RhodeSchwartz_ZNB40(Instrument):
         self._visainstrument.write('SENSE:SWEEP:COUNT:ALL %u' % n)
         self._visainstrument.write('INIT:IMM:ALL')
 
+    def trigger_n_times(self, n):
+        self._visainstrument.write('SENSE:SWEEP:COUNT:ALL %u' % n)
+        self._visainstrument.write('INIT:IMM:ALL')
+
     def autoscale_once(self):
-      for chan in range(1,4):
-          self._visainstrument.write('DISPlay:WINDow%u:TRAC%u:Y:SCALe:AUTO ONCE' % (chan,chan))
+        for chan in self.ch_catalog()[0::2]:
+           self._visainstrument.write('DISPlay:WINDow%u:TRAC%u:Y:SCALe:AUTO ONCE' % (int(chan),int(chan)))
+
+    def set_S21_only_channel_config(self):
+        self._visainstrument.write('*RST')
+        self._visainstrument.write('SYSTEM:DISPLAY:UPDATE ON')
+        self.set_sweep_mode('single')
+        self.autoscale_once()
 
     def set_default_channel_config(self):
+        default_channel_to_s = { 1: 'S11', 2: 'S21', 3: 'S12', 4: 'S22' }
         for chan in range(1,5):
-          self._visainstrument.write(':CALCULATE%d:PARAMETER:SDEFINE "Trc%u", "%s"' % (chan,chan, self._channel_to_s[chan]))
+          self._visainstrument.write(':CALCULATE%d:PARAMETER:SDEFINE "Trc%u", "%s"' % (chan,chan, default_channel_to_s[chan]))
           self._visainstrument.write(':DISPLAY:WINDOW%u:STATE ON' % chan)
           self._visainstrument.write(':DISPLAY:WINDOW%u:TRACE%u:FEED "Trc%u"' % (chan, chan, chan))
         self._visainstrument.write('SYSTEM:DISPLAY:UPDATE ON')
@@ -186,44 +195,64 @@ class RhodeSchwartz_ZNB40(Instrument):
         self.get_numpoints()
         self.get_averages()
         self.get_if_bandwidth()
-#        self.get_external_reference()
-#        self.get_external_reference_frequency()
+        self.get_external_reference()
+        self.get_external_reference_frequency()
         self.get_source_power()
         self.get_sweeptime()
         self.get_sweeptime_auto()
         self.get_center_frequency()
         self.get_span_frequency()
         
-
     def get_data(self, s_parameter):
         '''
         Get unformatted measured data from the current channel.
-
         s_parameter --- must be on of ['S11', 'S21', 'S12', 'S22']
         '''
         s = s_parameter.upper().strip()
         assert s in ['S11', 'S21', 'S12', 'S22'], 'Invalid S-parameter: %s' % s_parameter
-
         logging.debug(__name__ + ' : Get trace data.')
         
-        # assert that the channels are configured for the correct s-parameter measurements 
-        r = self._visainstrument.ask('SENSe%u:FUNCtion?' % (self._s_to_channel[s]))
+        # assert that the channels are configured for the correct s-parameter measurements        
+        try: 
+            s2chan = self.s_to_channel_dict()[s_parameter]
+        except KeyError:
+            print '%s is not currently being measured.' % s_parameter
+            raise
+
+        r = self._visainstrument.ask('SENSe%u:FUNCtion?' % float(s2chan))
         assert r.strip().strip("'").upper().endswith(s), 'Channel configuration has been changed! (%s)' % r
 
         self._visainstrument.write('FORM REAL,32')
+        raw = self._visainstrument.ask('TRAC? CH%uDATA' % float(s2chan))
 
-        raw = self._visainstrument.ask('TRAC? CH%uDATA' % float(self._s_to_channel[s_parameter]))
+        #float(self._s_to_channel[s_parameter]))
         return np.array([ r + 1j*i for r,i in self.__real32_byte_array_to_ndarray(raw).reshape((-1,2)) ])
 
+    def channel_to_s_dict(self):
+        channel_numbers = self.ch_catalog()[0::2]
+        channel_names = self.ch_catalog()[1::2] 
+        meas = []
+        for chan in channel_numbers:
+            sparam = self._visainstrument.ask('SENSE%u:FUNCTION?' % int(chan)).strip().strip("'").upper().split(":")[2]
+            meas.append(sparam)
+        return dict(zip(channel_numbers, meas))
 
+    def s_to_channel_dict(self):
+        return dict([(v,k) for k,v in self.channel_to_s_dict().iteritems()]) 
+        
     def start_single_sweep(self):
         '''
         Same as restart sweep in manual operation.
         '''
         logging.debug(__name__ + 'start a single sweep')
-        
-    
 
+    def get_function(self,chan):
+        '''
+        Same as restart sweep in manual operation.
+        '''
+        #logging.debug(__name__ + 'start a single sweep')
+        r = self._visainstrument.ask('SENSe%u:FUNCtion?' % chan)        
+        return r
 
     def get_frequency_data(self):
         '''
@@ -304,14 +333,31 @@ class RhodeSchwartz_ZNB40(Instrument):
     
     def ch_catalog(self):
         logging.debug('return numbers and names of all channels')
-        return self._visainstrument.ask('CONFIGURE:CHANNEL:CATALOG?')
+        return self._visainstrument.ask('CONFIGURE:CHANNEL:CATALOG?').strip().strip("'").upper().split(",")
+
+    def trace_catalog(self):
+        logging.debug('return numbers and names of all channels')
+        return self._visainstrument.ask('CONFIGURE:TRACE:CATALOG?').strip().strip("'").upper().split(",")
+
+    def window_catalog(self,wnd,wndtr):
+        logging.debug('return numbers and names of all channels')
+        return self._visainstrument.ask('DISPLAY:WINDOW%u:TRACE%u:CATALOG?' % (wnd,wndtr))
+
+    def list_traces_in_chan(self,chan):
+        logging.debug('return numbers and names of all channels')
+        return self._visainstrument.ask('CONFIGURE%u:TRACE:CATALOG?' % chan)
+
+    def paramter_select_query(self,chan):
+        logging.debug('return numbers and names of all channels')
+        return self._visainstrument.ask(':CALCULATE%u:PARAMETER:SELECT?' % chan)
+
 
     def do_set_if_bandwidth(self,if_bandwidth): #in Hz
         '''
         Note that video BW is automatically kept at 3x reolution BW
         It can be change manually on the FSL or using 'BAND:VID %sHz'
         '''
-        num_channels = len(self.ch_catalog().split(","))/2
+        num_channels = len(self.ch_catalog())/2
         logging.debug('Setting Resolution BW to %s' % if_bandwidth)
         if np.abs(if_bandwidth - 26e3) > 1:
             for chan in range(1,num_channels+1):
@@ -443,3 +489,10 @@ class RhodeSchwartz_ZNB40(Instrument):
         '''
         #self.set_trace_continuous(True) #turn continuous back on
     
+
+        
+
+
+
+
+
