@@ -1192,7 +1192,8 @@ class Data(SharedGObject):
         self._count_coord_val_dims()
 
         if cache == None:
-          logging.info('Finished reading %d data points. Data buffer size was %d points.' % (row_no, len(data)))
+          logging.info('Finished reading %d data points. (Debug: buffer size was %d points.)',
+                       1+row_no, len(data))
           self._data = data[:1+row_no,:]
 
         self._npoints = len(self._data)
