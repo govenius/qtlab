@@ -52,7 +52,8 @@ logging.getLogger().level = log_level
 
 
 # Make up some fake data, typically you would initialize
-# the Data objects from files instead.
+# the Data objects from files instead using the following syntax:
+# dd = qt.Data(r'D:/data/20141024/measured_data_dir') # If you want to load real data
 data_objects = []
 t = np.linspace(-10.,10.,11)
 
