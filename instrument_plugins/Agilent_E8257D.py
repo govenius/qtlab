@@ -1,6 +1,7 @@
 # Agilent_E8257D.py class, to perform the communication between the Wrapper and the device
 # Pieter de Groot <pieterdegroot@gmail.com>, 2008
 # Martijn Schaafsma <qtlab@mcschaafsma.nl>, 2008
+# Joonas Govenius <joonas.govenius@aalto.fi>, 2014
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +21,7 @@ from instrument import Instrument
 import visa
 import types
 import logging
-import numpy
+import numpy as np
 
 class Agilent_E8257D(Instrument):
     '''
@@ -50,7 +51,7 @@ class Agilent_E8257D(Instrument):
         self.add_parameter('power',
             flags=Instrument.FLAG_GETSET, units='dBm', minval=-135, maxval=16, type=types.FloatType)
         self.add_parameter('phase',
-            flags=Instrument.FLAG_GETSET, units='rad', minval=-numpy.pi, maxval=numpy.pi, type=types.FloatType)
+            flags=Instrument.FLAG_GETSET, units='rad', minval=-np.pi, maxval=np.pi, type=types.FloatType)
         self.add_parameter('frequency', format='%.09e',
             flags=Instrument.FLAG_GETSET, units='Hz', minval=1e5, maxval=20e9, type=types.FloatType)
 
@@ -88,6 +89,21 @@ class Agilent_E8257D(Instrument):
                         'scal': 'scalar network analyzer'})
         self.add_parameter('pulse_inverted_polarity', flags=Instrument.FLAG_GETSET, type=types.BooleanType)
 
+
+        self.add_parameter('internal_pulsesource',
+            flags=Instrument.FLAG_GETSET, type=types.StringType,
+            format_map={'squ': 'square',
+                        'frun': 'free running',
+                        'trig': 'externally triggered',
+                        'doub': 'doublet',
+                        'gate': 'externally gated internal pulse generator'})
+        self.add_parameter('internal_pulsesource_pulsewidth', format='%.09e',
+                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                           units='s', minval=70e-9, maxval=42., type=types.FloatType)
+        self.add_parameter('internal_pulsesource_pulseperiod', format='%.09e',
+                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                           units='s', minval=70e-9, maxval=42., type=types.FloatType)
+
                         
         self.add_parameter('am_type',
             flags=Instrument.FLAG_GETSET, type=types.StringType,
@@ -117,6 +133,7 @@ class Agilent_E8257D(Instrument):
                         'int2': 'internal generator 2',
                         'ext1': 'external modulation (EXT1 input)',
                         'ext2': 'external modulation (EXT2 input)'})
+        
 
         self.add_parameter('frequency_sweep_mode',
             flags=Instrument.FLAG_GETSET, type=types.StringType,
@@ -197,7 +214,11 @@ class Agilent_E8257D(Instrument):
 
         self.get_ext1_input_impedance()
         self.get_ext2_input_impedance()
-        
+
+        self.get_internal_pulsesource()
+        self.get_internal_pulsesource_pulsewidth()
+        self.get_internal_pulsesource_pulseperiod()
+
         self.get_frequency_sweep_mode()
         self.get_sweep_time()
         self.get_frequency_center()
@@ -207,6 +228,15 @@ class Agilent_E8257D(Instrument):
         self.get_frequency_step()
         self.get_trigger_source()
         
+
+    def __to_rounded_string(self, x, decimals, significant_figures):
+        ''' Round x to the specified number of decimals and significant figures.
+            Output a warning if rounded value is not equal to x. '''
+        rounded = ('%.{0}e'.format(significant_figures-1)) % ( np.round(x, decimals=decimals) )
+        if np.abs(float(rounded) - x) > np.finfo(np.float).tiny:
+          logging.warn('Rounding the requested value (%.20e) to %.20e (i.e. by %.20e).' % (x, rounded, float(x) - frequency))
+        return rounded
+
 
     def do_get_power(self):
         '''
@@ -285,10 +315,9 @@ class Agilent_E8257D(Instrument):
             None
         '''
         logging.debug(__name__ + ' : set frequency to %f' % freq)
-        rounded = '%.3f' % numpy.round(freq,decimals=3)
-        if numpy.abs(float(rounded) - freq) > numpy.finfo(numpy.float).tiny:
-          logging.warn('Rounding the requested frequency (%.15e Hz) to %s Hz (i.e. by %.6e Hz).' % (freq, rounded, float(rounded) - freq))
-        self._visainstrument.write('FREQ:CW %s' % rounded)
+        
+        self._visainstrument.write('FREQ:CW %s' % (
+            self.__to_rounded_string(freq, decimals=3, significant_figures=20) ))
     
     
     def do_get_frequency_center(self):
@@ -579,11 +608,30 @@ class Agilent_E8257D(Instrument):
         self._visainstrument.write(':PM:STAT %s' % (status.upper()))
         
     def do_get_pulse_source(self):
-        stat = self._visainstrument.ask(':PULM:SOUR?')
-        return stat.lower()
-    def do_set_pulse_source(self, status):
-        self._visainstrument.write(':PULM:SOUR %s' % (status.upper()))
-        
+        stat = self._visainstrument.ask(':PULM:SOUR?').lower()
+        return stat
+    def do_set_pulse_source(self, state):
+        self._visainstrument.write( ':PULM:SOUR %s' % (state.upper()) )
+
+    def do_get_internal_pulsesource(self):
+        stat = self._visainstrument.ask(':PULM:SOUR:INT?').lower()
+        return stat
+    def do_set_internal_pulsesource(self, state):
+        self._visainstrument.write( ':PULM:SOUR:INT %s' % (state.upper()) )
+        self.get_pulse_source() # changes from 'ext' to 'int' (if not 'int' already)
+
+    def do_get_internal_pulsesource_pulsewidth(self):
+        return float( self._visainstrument.ask(':PULM:INT:PWID?') )
+    def do_set_internal_pulsesource_pulsewidth(self, w):
+        self._visainstrument.write(':PULM:INT:PWID %s' % (
+            self.__to_rounded_string(w, decimals=9, significant_figures=9) ))
+
+    def do_get_internal_pulsesource_pulseperiod(self):
+        return float( self._visainstrument.ask(':PULM:INT:PER?') )
+    def do_set_internal_pulsesource_pulseperiod(self, w):
+        self._visainstrument.write(':PULM:INT:PER %s' % (
+            self.__to_rounded_string(w, decimals=9, significant_figures=9) ))
+
     def do_get_pulse_inverted_polarity(self):
         stat = self._visainstrument.ask(':PULM:EXT:POL?')
         return stat.lower().strip().startswith('inv')
