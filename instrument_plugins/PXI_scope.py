@@ -193,9 +193,9 @@ class PXI_scope(Instrument):
         for attempt in range(5):
         
           try:
+            time_armed = time.time()
             if arm_first:
               self.arm()
-              time_armed = time.time()
               qt.msleep( estimated_min_time )
           
             ftp = self.__get_connection()
@@ -249,15 +249,18 @@ class PXI_scope(Instrument):
                 
               qt.msleep(2.) # try again in a little bit
 
+            raise Exception('Acquisition taking too long. Estimated %g s, waited %g s.' % (
+                estimated_min_time, time.time() - time_armed) )
+
           except:
             logging.exception('Attempt %d to get traces from scope failed!', attempt)
             qt.msleep(10. + attempt*(estimated_min_time))
           finally:
             try: ftp.quit()
             except: pass
-        
-        assert False, 'Failed to get traces from PXI scope. Are triggers being sent?'
 
+        assert False, 'All attempts to acquire data failed.'
+        
     def do_get_most_recent_raw_datafile(self):
         '''
         Return the number of points per trace.
