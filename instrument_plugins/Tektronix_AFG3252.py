@@ -88,6 +88,9 @@ class Tektronix_AFG3252(Instrument):
         self.add_parameter('frequency', format='%.09e', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
             channels=(1, 2), minval=1E-6, maxval=240E6, units='Hz', channel_prefix='ch%d_')
+
+        self.add_parameter('frequencies_force_equal', type=types.BooleanType,
+            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
         
         self.add_parameter('pulse_width', format='%.09e', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
@@ -179,6 +182,7 @@ class Tektronix_AFG3252(Instrument):
         logging.info(__name__ + ' : Reading all data from instrument')
 
         self.get_ref_clock_mode()
+        self.get_frequencies_force_equal()
 
         for i in range(1,3):
             self.get('ch%d_amplitude' % i)
@@ -380,6 +384,22 @@ class Tektronix_AFG3252(Instrument):
           logging.warn('Rounding the requested frequency (%.15e Hz) to %s Hz (i.e. by %.6e Hz).' % (frequency, rounded, float(rounded) - frequency))
 
         self._visainstrument.write('SOUR%s:FREQ %s' % (channel, rounded))
+
+        # both freqs can change if the channel frequencies are set to "concurrent"
+        self.get_ch1_frequency()
+        self.get_ch2_frequency()
+
+
+    def do_get_frequencies_force_equal(self):
+        '''
+        Whether both channels to have to have the same frequency.
+        '''
+        return bool(int(self._visainstrument.ask(':FREQ:CONC?')))
+    def do_set_frequencies_force_equal(self, val):
+        '''
+        Forces both channels to have the same frequency.
+        '''
+        self._visainstrument.write(':FREQ:CONC %d' % (1 if val else 0))
 
     def do_get_pulse_width(self, channel):
         '''
