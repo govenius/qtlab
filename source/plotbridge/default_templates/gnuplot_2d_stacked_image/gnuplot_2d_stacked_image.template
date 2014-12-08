@@ -60,7 +60,7 @@ set output "output.png"
 {% endif %}
 {% if not global_opts.y2range|allnone %}set y2range [{{ global_opts.y2range[0]|ifnone('') }}:{{ global_opts.y2range[1]|ifnone('') }}]
 {% endif %}
-{% if not global_opts.zrange|allnone %}set zrange [{{ global_opts.zrange[0]|ifnone('') }}:{{ global_opts.zrange[1]|ifnone('') }}]
+{% if not global_opts.zrange|allnone %}set cbrange [{{ global_opts.zrange[0]|ifnone('') }}:{{ global_opts.zrange[1]|ifnone('') }}]
 {% endif %}
 
 
