@@ -106,6 +106,8 @@ set output "output.png"
 #                                   tc rgb "#777777"
 
 # legend position
+#set key out vert # place legends outside the plot area
+#set key cent right
 #set key left top
 set key right bottom
 #set key above title "Legend" box 3
