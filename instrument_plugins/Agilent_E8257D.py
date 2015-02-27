@@ -55,6 +55,9 @@ class Agilent_E8257D(Instrument):
         self.add_parameter('frequency', format='%.09e',
             flags=Instrument.FLAG_GETSET, units='Hz', minval=1e5, maxval=20e9, type=types.FloatType)
 
+        self.add_parameter('idn', flags=Instrument.FLAG_GET, type=types.StringType)
+        self.add_parameter('options', flags=Instrument.FLAG_GET, type=types.StringType)
+
         self.add_parameter('status',
             flags=Instrument.FLAG_GETSET, type=types.StringType,
             format_map={'on': 'output on',
@@ -192,6 +195,8 @@ class Agilent_E8257D(Instrument):
             None
         '''
         logging.info(__name__ + ' : get all')
+        self.get_idn()
+        self.get_options()
         self.get_power()
         self.get_phase()
         self.get_frequency()
@@ -237,6 +242,17 @@ class Agilent_E8257D(Instrument):
           logging.warn('Rounding the requested value (%.20e) to %.20e (i.e. by %.20e).' % (x, rounded, float(x) - frequency))
         return rounded
 
+    def do_get_idn(self):
+        '''
+        Get a string identifying the instrument.
+        '''
+        return self._visainstrument.ask('*IDN?')
+
+    def do_get_options(self):
+        '''
+        Get a string identifying the installed options.
+        '''
+        return self._visainstrument.ask(':DIAG:INFO:OPT:DET?')
 
     def do_get_power(self):
         '''
