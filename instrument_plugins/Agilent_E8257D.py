@@ -607,19 +607,19 @@ class Agilent_E8257D(Instrument):
         
     def do_get_mod_am(self):
         stat = self._visainstrument.ask(':AM:STAT?')
-        return stat.lower().strip() in ['1', 'on']
+        return 'on' if stat.lower().strip() in ['1', 'on'] else 'off'
     def do_set_mod_am(self, status):
         self._visainstrument.write(':AM:STAT %s' % (status.upper()))
         
     def do_get_mod_fm(self):
         stat = self._visainstrument.ask(':FM:STAT?')
-        return stat.lower().strip() in ['1', 'on']
+        return 'on' if stat.lower().strip() in ['1', 'on'] else 'off'
     def do_set_mod_fm(self, status):
         self._visainstrument.write(':FM:STAT %s' % (status.upper()))
 
     def do_get_mod_phim(self):
         stat = self._visainstrument.ask(':PM:STAT?')
-        return stat.lower().strip() in ['1', 'on']
+        return 'on' if stat.lower().strip() in ['1', 'on'] else 'off'
     def do_set_mod_phim(self, status):
         self._visainstrument.write(':PM:STAT %s' % (status.upper()))
         
