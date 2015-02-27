@@ -656,6 +656,7 @@ class Agilent_E8257D(Instrument):
  
     def do_get_am_source(self):
         stat = self._visainstrument.ask(':AM:SOUR?')
+        if stat.lower() == 'ext': return 'ext1' # These are synonyms
         return stat.lower()
     def do_set_am_source(self, status):
         self._visainstrument.write(':AM:SOUR %s' % (status.upper()))
