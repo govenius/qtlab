@@ -93,7 +93,26 @@ class PXI_scope(Instrument):
             flags=Instrument.FLAG_GETSET, minval=0, maxval=31, type=types.IntType)
 
         self.add_parameter('points',
-            flags=Instrument.FLAG_GETSET, minval=3, maxval=16000, type=types.IntType) # Limited by averaging buffer sizes in FPGA
+            flags=Instrument.FLAG_GETSET, minval=3, maxval=8194, type=types.IntType) # Limited by averaging buffer sizes in FPGA
+
+        self.add_parameter('boxcar_power',
+            flags=Instrument.FLAG_GETSET, minval=1, maxval=20, type=types.IntType)
+        self.add_parameter('ddc_per_clock_scaled',
+            flags=Instrument.FLAG_GETSET, minval=0, maxval=2**16, type=types.IntType)
+        self.add_parameter('int_trigger_period_in_clockcycles',
+            flags=Instrument.FLAG_GETSET, minval=1, type=types.IntType)
+        self.add_parameter('ext_trigger',
+            flags=Instrument.FLAG_GETSET, type=types.BooleanType)
+        self.add_parameter('dio_set_times',
+            flags=Instrument.FLAG_GETSET, type=types.ListType)
+        self.add_parameter('dio_values',
+            flags=Instrument.FLAG_GETSET, type=types.ListType)
+        self.add_parameter('dio_default_value',
+            flags=Instrument.FLAG_GETSET, minval=0, maxval=2**8-1, type=types.IntType)
+
+        self._DIO_FLIPS = 20 # max number of DIO flips (size of "dio_values" and "dio_set_times"), hard-coded in FPGA
+        self._ADC_SAMPLE_RATE = 250e6 # hard coded in the FPGA
+        self._CLOCK_RATE = 125e6 # hard coded in the FPGA
 
         self.add_parameter('most_recent_raw_datafile',
             flags=Instrument.FLAG_GET, type=types.StringType)
@@ -104,6 +123,9 @@ class PXI_scope(Instrument):
         self.add_function('get_all')
         self.add_function('arm')
         self.add_function('get_traces')
+        self.add_function('clear_triggers')
+        self.add_function('set_trigger')
+        self.add_function('plot_outputs')
 
         # Must reset since parameters do not persist
         self.reset()
@@ -125,6 +147,16 @@ class PXI_scope(Instrument):
 
         self.get_points()
         self.get_average_power()
+
+        self.get_ddc_per_clock_scaled()
+        self.get_boxcar_power()
+        self.get_int_trigger_period_in_clockcycles()
+        self.get_ext_trigger()
+
+        self.get_dio_default_value()
+        self.get_dio_set_times()
+        self.get_dio_values()
+
         self.get_datafile_prefix()
         self.get_most_recent_raw_datafile()
         
@@ -141,9 +173,168 @@ class PXI_scope(Instrument):
         logging.info(__name__ + ' : resetting instrument')
         self._average_power = 0
         self._points = 1024
+        self._ddc_per_clock_scaled = 768
+        self._boxcar_power = 9
+        self._int_trigger_period_in_clockcycles = 100
+        self._ext_trigger = True
+
+        self._dio_default_value = 0
+        self._dio_set_times = list(np.zeros(self._DIO_FLIPS, dtype=np.int) - 1)
+        self._dio_values = list(np.zeros(len(self._dio_set_times), dtype=np.int))
+
         self._most_recent_trace = None
         self._datafile_prefix = 'PXI_scope_data'
+
         self.__regenerate_config_xml()
+
+    def plot_outputs(self, time_unit=1e-6):
+        '''
+        Visualize the triggers.
+        '''
+
+        nflips = np.where(np.array(self._dio_set_times) < 0)[0][0]
+
+        # duplicate each point
+        if nflips > 0:
+          times = np.array([ self._dio_set_times[:nflips], self._dio_set_times[:nflips] ], dtype=np.float).T.reshape((-1))
+          triggers = np.array([ self._dio_values[:nflips], self._dio_values[:nflips] ], dtype=np.int).T.reshape((-1))
+        else:
+          assert  nflips == 0
+          times = np.array([ 0 ], dtype=np.float)
+          triggers = np.array([ self._dio_defaul_value ], dtype=np.int)
+
+        times /= self._CLOCK_RATE
+
+        print times * 1e6
+        print triggers
+
+        # add points at the beginning and end
+        total = self.get_digitized_time()
+        times = np.append([-0.05*total, times[0]], times[1:])
+        triggers = np.append([self._dio_default_value, self._dio_default_value], triggers[:-1])
+        times = np.append(times, [total, total, 1.05*total])
+        triggers = np.append(triggers, [triggers[-1], self._dio_default_value, self._dio_default_value])
+
+        print times * 1e6
+        print triggers
+
+        # convert bit masks to lists
+        triggers = np.array([
+            [ (1+i)*( (v&(1<<i)) > 0 ) for i in range(8) ]
+            for v in triggers ])
+
+        import plot
+        p = plot.get_plot('PXI outputs').get_plot()
+        p.clear()
+        p.set_xlabel('time (%.1e s)' % time_unit)
+        p.set_ylabel('channel')
+
+        for i,trig in enumerate(triggers.T):
+            p.add_trace(times, trig.astype(np.float),
+                        x_plot_units=time_unit,
+                        points=True, lines=True,
+                        title=str(i))
+
+        p.update()
+        p.run()
+
+    def clear_triggers(self):
+        '''
+        Clear all trigger flips. (But don't change default values.)
+        '''
+        self.set_dio_set_times([])
+        self.set_dio_values([])
+
+    def set_trigger(self, ch, flip_times, time_unit=1.):
+        '''
+        Flip the trigger output for DIO bit ch (0-based index)
+        at times specified in the 'flip_times' sequence.
+        Does not affect other bits.
+
+        The value before the first flip will be the
+        value specified in dio_default_value.
+
+        By default the flip times are assumed to be in seconds
+        (time_unit=1.) and are rounded to closest clock cycle.
+
+        This is only a convenience function for changing
+        dio_set_times and dio_values.
+        '''
+        assert ch >= 0
+        assert ch < 8
+        assert len(flip_times) < self._DIO_FLIPS
+        this = 1<<ch
+        others = ~this
+
+        i = 0
+        t = 0
+        on_next = not ( (self.get_dio_default_value() &this) > 0 )
+        prev_vothers = self.get_dio_default_value() &others
+
+        nflips = np.where(np.array(self._dio_set_times) < 0)[0][0]
+
+        for next_flip in np.round(np.array(flip_times)*time_unit*self._CLOCK_RATE).astype(np.int):
+          if i > self._DIO_FLIPS-2:
+            assert False, 'Too many flips in total.'
+
+          # try to make sure we didn't mess up...
+          assert len(self._dio_set_times) == self._DIO_FLIPS
+          assert len(self._dio_values) == self._DIO_FLIPS
+          assert self._dio_set_times[-1] < 0
+
+          if self._dio_set_times[i] < 0:
+            # no more flips for other channels
+            self._dio_set_times[i] = next_flip
+            self._dio_set_times[i+1] = -1
+            self._dio_values[i] = prev_vothers + (this if on_next else 0)
+            on_next = not on_next
+            i += 1
+
+          elif self._dio_set_times[i] == next_flip:
+            # other channels flipped at the same time
+            prev_vothers = (self._dio_values[i])&others
+            self._dio_values[i] = prev_vothers + (this if on_next else 0)
+            on_next = not on_next
+            i += 1
+
+          elif self._dio_set_times[i] < next_flip:
+            # another channel (probably) needs to be flipped before this one
+            if prev_vothers == ((self._dio_values[i]) &others):
+              # nothing is actually flipped so remove this "set_time"
+              del self._dio_set_times[i]
+              del self._dio_values[i]
+              # compensate by adding an empty entry at the end
+              self._dio_set_times.append(-1)
+              self._dio_values.append(0)
+            else:
+              # copy the previous value for this channel
+              self._dio_values[i] = ((self._dio_values[i])&others) + (this if not on_next else 0)
+              prev_vothers = (self._dio_values[i])&others
+              i += 1
+
+          elif next_flip < self._dio_set_times[i]:
+            # this channels needs to be flipped before any others
+            # --> need to insert a new "set_time" in between
+            assert self._dio_set_times[-2] < 0, 'Too many flips in total.'
+            v = prev_vothers + (this if on_next else 0)
+            self._dio_set_times = self._dio_set_times[:i] + [ next_flip ] + self._dio_set_times[i:-1]
+            self._dio_values = self._dio_values[:i] + [ v ] + self._dio_values[i:-1]
+            on_next = not on_next
+            i += 1
+
+          else:
+            assert False
+
+        while i < nflips:
+          # if this channel is flipped fewer times than others,
+          # need to copy the last value for the remaining set times
+          self._dio_values[i] = ((self._dio_values[i])&others) + (this if not on_next else 0)
+          i += 1
+
+        self.__regenerate_config_xml()
+
+        self.get_dio_set_times()
+        self.get_dio_values()
       
     def arm(self):
         '''
@@ -171,15 +362,16 @@ class PXI_scope(Instrument):
           buffer.close()
         finally:
           ftp.quit()
+
+    def get_digitized_time(self):
+        ''' The total amount of time digitized. '''
+        boxcar_filter_length_in_samples = 2**self.get_boxcar_power()
+        return (1 + self.get_points()) * boxcar_filter_length_in_samples/self._ADC_SAMPLE_RATE
       
     def estimate_min_acquisition_time(self):
         ''' Give a lower bound for the acquisition time.
         This is close to exact if the time spent waiting for triggers can be ignored. '''
-
-        boxcar_filter_length_in_samples = 256 # ATM, hard coded in the RT code
-        adc_sample_rate = 250e6 # hard coded in the FPGA
-        return (self.get_points() * 2**(self.get_average_power())
-                              * boxcar_filter_length_in_samples/adc_sample_rate)
+        return self.get_digitized_time() * 2**(self.get_average_power())
 
     def get_traces(self, arm_first=False):
         '''
@@ -225,7 +417,7 @@ class PXI_scope(Instrument):
                 objs, rawdata = pyTDMS.read(local_datafilepath)
                 
                 # The sample rate is the same for both channels...
-                samplerate = objs[objs.keys()[1]][3]['Sample rate'][1]
+                samplerate = objs["/'Time Domain'/'AI0_real'"][3]['Sample rate'][1]
                 
                 channels = [
                        np.array(rawdata["/'Time Domain'/'AI%d_real'" % ch])
@@ -252,7 +444,8 @@ class PXI_scope(Instrument):
             raise Exception('Acquisition taking too long. Estimated %g s, waited %g s.' % (
                 estimated_min_time, time.time() - time_armed) )
 
-          except:
+          except Exception as e:
+            if str(e).strip().lower() == 'human abort': raise
             logging.exception('Attempt %d to get traces from scope failed!', attempt)
             qt.msleep(10. + attempt*(estimated_min_time))
           finally:
@@ -262,15 +455,9 @@ class PXI_scope(Instrument):
         assert False, 'All attempts to acquire data failed.'
         
     def do_get_most_recent_raw_datafile(self):
-        '''
-        Return the number of points per trace.
-        '''
         return self._most_recent_trace
 
     def do_get_datafile_prefix(self):
-        '''
-        Return the number of points per trace.
-        '''
         return self._datafile_prefix
 
     def do_set_datafile_prefix(self, val):
@@ -282,15 +469,126 @@ class PXI_scope(Instrument):
 
     def do_get_points(self):
         '''
-        Return the number of points per trace.
+        Return the number of returned points per trace.
         '''
         return self._points
-
     def do_set_points(self, val):
         '''
-        Set the number of points per trace.
+        Set the number of returned points per trace.
         '''
         self._points = val
+        self.__regenerate_config_xml()
+
+    def do_get_boxcar_power(self):
+        '''
+        2^boxcar_power points from ADC are averaged into a single point
+        right after DDC.
+        '''
+        return self._boxcar_power
+    def do_set_boxcar_power(self, val):
+        '''
+        2^boxcar_power points from ADC are averaged into a single point
+        right after DDC.
+        '''
+        self._boxcar_power = val
+        self.__regenerate_config_xml()
+
+    def do_get_ddc_per_clock_scaled(self):
+        '''
+        Specifies the digital downconversion frequency
+        as (DDC freq./clock freq.)*2^16.
+        '''
+        return self._ddc_per_clock_scaled
+    def do_set_ddc_per_clock_scaled(self, val):
+        '''
+        Specifies the digital downconversion frequency
+        as (DDC freq./clock freq.)*2^16.
+        '''
+        self._ddc_per_clock_scaled = val
+        self.__regenerate_config_xml()
+
+
+    def do_get_int_trigger_period_in_clockcycles(self):
+        '''
+        Specifies the period for the internal trigger generator
+        in clock cycles.
+        '''
+        return self._int_trigger_period_in_clockcycles
+    def do_set_int_trigger_period_in_clockcycles(self, val):
+        '''
+        Specifies the period for the internal trigger generator
+        in clock cycles.
+        '''
+        self._int_trigger_period_in_clockcycles = val
+        self.__regenerate_config_xml()
+
+    def do_get_ext_trigger(self):
+        '''
+        Use a trigger fed to the TRIG port on the transceiver.
+        Otherwise the internal trigger generator is used.
+        '''
+        return self._ext_trigger
+    def do_set_ext_trigger(self, val):
+        '''
+        Use a trigger fed to the TRIG port on the transceiver.
+        Otherwise the internal trigger generator is used.
+        '''
+        self._ext_trigger = val
+        self.__regenerate_config_xml()
+
+
+    def do_get_dio_default_value(self):
+        '''
+        The value of the DIO outputs when idle (not digitizing).
+        Specified as an 8-bit mask.
+        '''
+        return self._dio_default_value
+    def do_set_dio_default_value(self, val):
+        '''
+        The value of the DIO outputs when idle (not digitizing).
+        Specified as an 8-bit mask.
+        '''
+        self._dio_default_value = val
+        self.__regenerate_config_xml()
+
+    def do_get_dio_values(self):
+        '''
+        The value of the DIO outputs to set at the times specified by
+        "dio_set_times".
+        Specified as a list of 8-bit masks.
+        '''
+        return self._dio_values
+    def do_set_dio_values(self, val):
+        '''
+        The value of the DIO outputs to set at the times specified by
+        "dio_set_times".
+        Specified as a list of 8-bit masks.
+        '''
+        assert len(val) < self._DIO_FLIPS
+        dio_values = np.zeros(self._DIO_FLIPS, dtype=np.int)
+        if len(val) > 0:
+          dio_values[:len(val)] = np.array(val, dtype=np.int)
+        self._dio_values = list(dio_values)
+        self.__regenerate_config_xml()
+
+    def do_get_dio_set_times(self):
+        '''
+        The times at which the DIO outputs are changed,
+        specified in clock cycles.
+        The values are specified by "dio_values".
+        '''
+        return self._dio_set_times
+    def do_set_dio_set_times(self, val):
+        '''
+        The times at which the DIO outputs are changed,
+        specified in clock cycles.
+        The values are specified by "dio_values".
+        '''
+        assert len(val) < self._DIO_FLIPS # Hard coded in FPGA
+        dio_set_times = np.zeros(self._DIO_FLIPS, dtype=np.int) - 1
+        if len(val) > 0:
+          dio_set_times[:len(val)] = np.array(val, dtype=np.int)
+        self._dio_set_times = list(dio_set_times)
         self.__regenerate_config_xml()
 
     def do_get_average_power(self):
@@ -299,7 +597,6 @@ class PXI_scope(Instrument):
         Specified as a power of two! E.g. 8 means 2**8 averages.
         '''
         return self._average_power
-
     def do_set_average_power(self, val):
         '''
         Set the number of averaged triggers.
@@ -322,8 +619,16 @@ class PXI_scope(Instrument):
         # Regenerate the config file (as string)
         template = Template(PXI_scope._config_template)
         config = template.render(points=self._points,
-                        average_power=self._average_power,
-                        datafile_prefix=self._datafile_prefix)
+                                 average_power=self._average_power,
+                                 datafile_prefix=self._datafile_prefix,
+                                 boxcar_width=self._boxcar_power,
+                                 ddc_per_clock=self._ddc_per_clock_scaled,
+                                 int_trigger_period=self._int_trigger_period_in_clockcycles,
+                                 ext_trigger=int(bool(self._ext_trigger)),
+                                 dio_set_times=self._dio_set_times,
+                                 dio_values=self._dio_values,
+                                 dio_default=self._dio_default_value,
+                                 dio_size=self._DIO_FLIPS)
 
         # Upload it to the target
         ftp = self.__get_connection(change_to_datadir=False)
@@ -342,192 +647,64 @@ class PXI_scope(Instrument):
 <LVData xmlns="http://www.ni.com/LVData">
 <Version>13.0</Version>
 <Cluster>
-<Name>Acquisition and Logging Configuration</Name>
-<NumElts>14</NumElts>
-<DBL>
-<Name>Data Rate (Hz)</Name>
-<Val>1000.00000000000000</Val>
-</DBL>
-<I32>
-<Name>Samples per Read</Name>
+<Name>PXI scope configuration</Name>
+<NumElts>11</NumElts>
+<U16>
+<Name>ADC samples per saved sample (as power of 2)</Name>
+<Val>{{ boxcar_width }}</Val>
+</U16>
+<U32>
+<Name>Saved samples</Name>
 <Val>{{ points }}</Val>
-</I32>
-<I32>
-<Name>Number of Reads to Save</Name>
+</U32>
+<I16>
+<Name>ddc freq per clock freq * 2**16</Name>
+<Val>{{ ddc_per_clock }}</Val>
+</I16>
+<U16>
+<Name>Triggers to average (as power of 2)</Name>
 <Val>{{ average_power }}</Val>
-</I32>
+</U16>
 <String>
 <Name>Data File Name</Name>
 <Val>{{ datafile_prefix }}</Val>
 </String>
-<Array>
-<Name>TDMS Properties</Name>
-<Dimsize>8</Dimsize>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>Aalto University</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>JMG</Val>
-</String>
-</Cluster>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>Author</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>[DeveloperName]</Val>
-</String>
-</Cluster>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>Operator</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>[OperatorName]</Val>
-</String>
-</Cluster>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>TestSystem</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>[SystemName]</Val>
-</String>
-</Cluster>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>Site</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>[Location]</Val>
-</String>
-</Cluster>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>Line</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>[Line]</Val>
-</String>
-</Cluster>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>Machine</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>[MachineName]</Val>
-</String>
-</Cluster>
-<Cluster>
-<Name>TDMS Properties</Name>
-<NumElts>2</NumElts>
-<String>
-<Name>Name</Name>
-<Val>Description</Val>
-</String>
-<String>
-<Name>Value</Name>
-<Val>[Description]</Val>
-</String>
-</Cluster>
-</Array>
-<I32>
-<Name>Number of Channels</Name>
-<Val>2</Val>
-</I32>
-<Array>
-<Name>Channel Scale Array</Name>
-<Dimsize>4</Dimsize>
-<DBL>
-<Name>Ch0 Scale</Name>
-<Val>1.00000000000000</Val>
-</DBL>
-<DBL>
-<Name>Ch0 Scale</Name>
-<Val>1.00000000000000</Val>
-</DBL>
-<DBL>
-<Name>Ch0 Scale</Name>
-<Val>1.00000000000000</Val>
-</DBL>
-<DBL>
-<Name>Ch0 Scale</Name>
-<Val>1.00000000000000</Val>
-</DBL>
-</Array>
-<Array>
-<Name>Channel Names</Name>
-<Dimsize>4</Dimsize>
-<String>
-<Name>String</Name>
-<Val>AI0</Val>
-</String>
-<String>
-<Name>String</Name>
-<Val>AI1</Val>
-</String>
-<String>
-<Name>String</Name>
-<Val>unused2</Val>
-</String>
-<String>
-<Name>String</Name>
-<Val>unused3</Val>
-</String>
-</Array>
-<DBL>
-<Name>Trigger - RMS Value</Name>
-<Val>2.00000000000000</Val>
-</DBL>
-<I32>
-<Name>Trigger - Channel</Name>
-<Val>0</Val>
-</I32>
-<I32>
-<Name>Trigger - Time (Minute)</Name>
-<Val>30</Val>
-</I32>
+<U64>
+<Name>Internal trigger period</Name>
+<Val>{{int_trigger_period}}</Val>
+</U64>
 <Boolean>
-<Name>Enable RMS Trigger</Name>
-<Val>1</Val>
+<Name>External Trigger</Name>
+<Val>{{ext_trigger}}</Val>
 </Boolean>
 <Boolean>
-<Name>Enable Time Trigger</Name>
+<Name>Force trigger</Name>
 <Val>0</Val>
 </Boolean>
-<Boolean>
-<Name>Always Log</Name>
-<Val>0</Val>
-</Boolean>
+<Array>
+<Name>DIO set times</Name>
+<Dimsize>{{dio_size}}</Dimsize>
+{% for t in dio_set_times %}
+<I64>
+<Name>Numeric</Name>
+<Val>{{t}}</Val>
+</I64>
+{% endfor %}
+</Array>
+<Array>
+<Name>DIO values</Name>
+<Dimsize>{{dio_size}}</Dimsize>
+{% for v in dio_values %}
+<U8>
+<Name>Numeric</Name>
+<Val>{{v}}</Val>
+</U8>
+{% endfor %}
+</Array>
+<U8>
+<Name>DIO when not digitizing</Name>
+<Val>{{dio_default}}</Val>
+</U8>
 </Cluster>
 </LVData>
 '''
