@@ -106,7 +106,9 @@ class DataView():
           try:
             self._settings = [ (0, self._parse_settings(data)) ]
           except:
-            logging.exception("Could not parse the instrument settings file. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
+            if len(data.get_filepath()) > 0:
+              # don't warn the user if the data object has no files associated with it
+              logging.exception("Could not parse the instrument settings file. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
             self._settings = None
 
         except MemoryError as e:
@@ -177,7 +179,9 @@ class DataView():
             for jj,settings in enumerate(all_settings):
               self._settings.append( (lens[:jj].sum(), settings) )
           except:
-            logging.exception("Could not parse the instrument settings file for one or more qt.Data objects. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
+            if not all( len(dat.get_filepath()) == 0 for dat in data ):
+              # don't warn the user if the data objects have no files associated with them
+              logging.exception("Could not parse the instrument settings file for one or more qt.Data objects. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
             self._settings = None
 
         self._data = unmasked
@@ -585,7 +589,7 @@ class DataView():
         with open(set_path, 'r') as f:
           settings_string = f.read()
       except Exception as e:
-        logging.exception("Could not load .set file from '%s'." % set_path)
+        #logging.exception("Could not load .set file from '%s'." % set_path)
         raise
 
       try:
