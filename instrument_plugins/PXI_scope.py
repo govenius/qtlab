@@ -103,12 +103,11 @@ class PXI_scope(Instrument):
             flags=Instrument.FLAG_GETSET, minval=1, type=types.IntType)
         self.add_parameter('ext_trigger',
             flags=Instrument.FLAG_GETSET, type=types.BooleanType)
-        self.add_parameter('dio_set_times',
-            flags=Instrument.FLAG_GETSET, type=types.ListType)
-        self.add_parameter('dio_values',
-            flags=Instrument.FLAG_GETSET, type=types.ListType)
         self.add_parameter('dio_default_value',
             flags=Instrument.FLAG_GETSET, minval=0, maxval=2**8-1, type=types.IntType)
+        self._DIO_BITS = 8
+        self.add_parameter('flip_times', flags=Instrument.FLAG_GETSET, type=types.ListType,
+                           channels=tuple(range(self._DIO_BITS)), channel_prefix='dio_bit%d_')
 
         self._DIO_FLIPS = 20 # max number of DIO flips (size of "dio_values" and "dio_set_times"), hard-coded in FPGA
         self._ADC_SAMPLE_RATE = 250e6 # hard coded in the FPGA
@@ -124,7 +123,6 @@ class PXI_scope(Instrument):
         self.add_function('arm')
         self.add_function('get_traces')
         self.add_function('clear_triggers')
-        self.add_function('set_trigger')
         self.add_function('plot_outputs')
 
         # Must reset since parameters do not persist
@@ -154,8 +152,8 @@ class PXI_scope(Instrument):
         self.get_ext_trigger()
 
         self.get_dio_default_value()
-        self.get_dio_set_times()
-        self.get_dio_values()
+        for i in range(self._DIO_BITS):
+            self.get('dio_bit%d_flip_times' % i)
 
         self.get_datafile_prefix()
         self.get_most_recent_raw_datafile()
@@ -179,8 +177,7 @@ class PXI_scope(Instrument):
         self._ext_trigger = True
 
         self._dio_default_value = 0
-        self._dio_set_times = list(np.zeros(self._DIO_FLIPS, dtype=np.int) - 1)
-        self._dio_values = list(np.zeros(len(self._dio_set_times), dtype=np.int))
+        self._dio_flip_times = [ tuple() for i in range(self._DIO_BITS) ]
 
         self._most_recent_trace = None
         self._datafile_prefix = 'PXI_scope_data'
@@ -192,16 +189,18 @@ class PXI_scope(Instrument):
         Visualize the triggers.
         '''
 
-        nflips = np.where(np.array(self._dio_set_times) < 0)[0][0]
+        dio_set_times, dio_values = self._combine_flip_times()
+
+        nflips = np.where(np.array(dio_set_times) < 0)[0][0]
 
         # duplicate each point
         if nflips > 0:
-          times = np.array([ self._dio_set_times[:nflips], self._dio_set_times[:nflips] ], dtype=np.float).T.reshape((-1))
-          triggers = np.array([ self._dio_values[:nflips], self._dio_values[:nflips] ], dtype=np.int).T.reshape((-1))
+          times = np.array([ dio_set_times[:nflips], dio_set_times[:nflips] ], dtype=np.float).T.reshape((-1))
+          triggers = np.array([ dio_values[:nflips], dio_values[:nflips] ], dtype=np.int).T.reshape((-1))
         else:
           assert  nflips == 0
           times = np.array([ 0 ], dtype=np.float)
-          triggers = np.array([ self._dio_defaul_value ], dtype=np.int)
+          triggers = np.array([ dio_defaul_value ], dtype=np.int)
 
         times /= self._CLOCK_RATE
 
@@ -242,99 +241,72 @@ class PXI_scope(Instrument):
         '''
         Clear all trigger flips. (But don't change default values.)
         '''
-        self.set_dio_set_times([])
-        self.set_dio_values([])
+        for i in range(self._DIO_BITS):
+            self.set('dio_bit%d_flip_times' % i, tuple())
 
-    def set_trigger(self, ch, flip_times, time_unit=1.):
+    def do_get_flip_times(self, channel):
+        ''' See set_dio_bitX_flip_times() '''
+        return np.array(self._dio_flip_times[channel]).copy()
+
+    def do_set_flip_times(self, flip_times, channel):
         '''
-        Flip the trigger output for DIO bit ch (0-based index)
+        Flip the trigger output for the given DIO bit (0-based index)
         at times specified in the 'flip_times' sequence.
-        Does not affect other bits.
 
         The value before the first flip will be the
-        value specified in dio_default_value.
+        value specified in dio_default_value bitmask.
 
-        By default the flip times are assumed to be in seconds
-        (time_unit=1.) and are rounded to closest clock cycle.
-
-        This is only a convenience function for changing
-        dio_set_times and dio_values.
+        The flip times are assumed to be in seconds
+        and are rounded to closest clock cycle.
         '''
-        assert ch >= 0
-        assert ch < 8
+        assert channel >= 0
+        assert channel < self._DIO_BITS
         assert len(flip_times) < self._DIO_FLIPS
-        this = 1<<ch
-        others = ~this
 
-        i = 0
-        t = 0
-        on_next = not ( (self.get_dio_default_value() &this) > 0 )
-        prev_vothers = self.get_dio_default_value() &others
-
-        nflips = np.where(np.array(self._dio_set_times) < 0)[0][0]
-
-        for next_flip in np.round(np.array(flip_times)*time_unit*self._CLOCK_RATE).astype(np.int):
-          if i > self._DIO_FLIPS-2:
-            assert False, 'Too many flips in total.'
-
-          # try to make sure we didn't mess up...
-          assert len(self._dio_set_times) == self._DIO_FLIPS
-          assert len(self._dio_values) == self._DIO_FLIPS
-          assert self._dio_set_times[-1] < 0
-
-          if self._dio_set_times[i] < 0:
-            # no more flips for other channels
-            self._dio_set_times[i] = next_flip
-            self._dio_set_times[i+1] = -1
-            self._dio_values[i] = prev_vothers + (this if on_next else 0)
-            on_next = not on_next
-            i += 1
-
-          elif self._dio_set_times[i] == next_flip:
-            # other channels flipped at the same time
-            prev_vothers = (self._dio_values[i])&others
-            self._dio_values[i] = prev_vothers + (this if on_next else 0)
-            on_next = not on_next
-            i += 1
-
-          elif self._dio_set_times[i] < next_flip:
-            # another channel (probably) needs to be flipped before this one
-            if prev_vothers == ((self._dio_values[i]) &others):
-              # nothing is actually flipped so remove this "set_time"
-              del self._dio_set_times[i]
-              del self._dio_values[i]
-              # compensate by adding an empty entry at the end
-              self._dio_set_times.append(-1)
-              self._dio_values.append(0)
-            else:
-              # copy the previous value for this channel
-              self._dio_values[i] = ((self._dio_values[i])&others) + (this if not on_next else 0)
-              prev_vothers = (self._dio_values[i])&others
-              i += 1
-
-          elif next_flip < self._dio_set_times[i]:
-            # this channels needs to be flipped before any others
-            # --> need to insert a new "set_time" in between
-            assert self._dio_set_times[-2] < 0, 'Too many flips in total.'
-            v = prev_vothers + (this if on_next else 0)
-            self._dio_set_times = self._dio_set_times[:i] + [ next_flip ] + self._dio_set_times[i:-1]
-            self._dio_values = self._dio_values[:i] + [ v ] + self._dio_values[i:-1]
-            on_next = not on_next
-            i += 1
-
-          else:
-            assert False
-
-        while i < nflips:
-          # if this channel is flipped fewer times than others,
-          # need to copy the last value for the remaining set times
-          self._dio_values[i] = ((self._dio_values[i])&others) + (this if not on_next else 0)
-          i += 1
-
+        self._dio_flip_times[channel] = np.round(np.array(flip_times)*self._CLOCK_RATE).astype(np.int).copy()
         self.__regenerate_config_xml()
 
-        self.get_dio_set_times()
-        self.get_dio_values()
+    def _combine_flip_times(self):
+        '''
+        Convert the individual flip_times + dio_default_value into
+        one set times and one values array, as expected by the PXI code.
+        '''
+
+        last_flip = -1
+        current_value = self._dio_default_value
+
+        flip_times = [ list(self._dio_flip_times[i]) for i in range(self._DIO_BITS) ]
+        combined_set_times = []
+        combined_set_values = []
+
+        while True:
+            # first find when next_flip_occurs
+            next_flip_at = min( (times[0] if len(times)>0 else np.inf) for times in flip_times )
+            #print 'next flip at clock cycle %s' % next_flip_at
+            if np.isinf(next_flip_at): break # no more flips
+            
+            # flip all bits with the same flip time
+            for i in range(self._DIO_BITS):
+                if len(flip_times[i]) > 0 and flip_times[i][0] == next_flip_at:
+                    current_value ^= (1<<i)
+                    del flip_times[i][0]
+
+            combined_set_times.append(next_flip_at)
+            combined_set_values.append(current_value)
+            
+
+        assert len(combined_set_times) < self._DIO_FLIPS-1, 'Too many flips in total. (Hard coded limit in PXI.)'
+
+        # no more flips, pad with -1 set times at the end.
+        # the PXI code requires at least one -1 at the end!
+        while len(combined_set_times) < self._DIO_FLIPS:
+          combined_set_times.append(-1)
+          combined_set_values.append(0)
+
+        assert len(combined_set_times) == len(combined_set_values)
+        assert len(combined_set_times) == self._DIO_FLIPS, 'Wrong number of flips. (Hard coded limit in PXI.)'
+
+        return combined_set_times, combined_set_values
       
     def arm(self):
         '''
@@ -408,6 +380,7 @@ class PXI_scope(Instrument):
                 # download the data to a local file
                 most_recent_trace = os.path.split(most_recent_trace)[-1] # strip path, keep filename only
                 local_datafilepath = os.path.join(qt.config.get('tempdir'), most_recent_trace)
+                local_datafilepath = os.path.abspath(local_datafilepath)
                 with open(local_datafilepath, 'wb') as fdata:
                   ftp.retrbinary('RETR %s' % most_recent_trace, fdata.write)
                 ftp.delete(most_recent_trace) # delete from PXI
@@ -551,46 +524,6 @@ class PXI_scope(Instrument):
         self._dio_default_value = val
         self.__regenerate_config_xml()
 
-    def do_get_dio_values(self):
-        '''
-        The value of the DIO outputs to set at the times specified by
-        "dio_set_times".
-        Specified as a list of 8-bit masks.
-        '''
-        return self._dio_values
-    def do_set_dio_values(self, val):
-        '''
-        The value of the DIO outputs to set at the times specified by
-        "dio_set_times".
-        Specified as a list of 8-bit masks.
-        '''
-        assert len(val) < self._DIO_FLIPS
-        dio_values = np.zeros(self._DIO_FLIPS, dtype=np.int)
-        if len(val) > 0:
-          dio_values[:len(val)] = np.array(val, dtype=np.int)
-        self._dio_values = list(dio_values)
-        self.__regenerate_config_xml()
-
-    def do_get_dio_set_times(self):
-        '''
-        The times at which the DIO outputs are changed,
-        specified in clock cycles.
-        The values are specified by "dio_values".
-        '''
-        return self._dio_set_times
-    def do_set_dio_set_times(self, val):
-        '''
-        The times at which the DIO outputs are changed,
-        specified in clock cycles.
-        The values are specified by "dio_values".
-        '''
-        assert len(val) < self._DIO_FLIPS # Hard coded in FPGA
-        dio_set_times = np.zeros(self._DIO_FLIPS, dtype=np.int) - 1
-        if len(val) > 0:
-          dio_set_times[:len(val)] = np.array(val, dtype=np.int)
-        self._dio_set_times = list(dio_set_times)
-        self.__regenerate_config_xml()
-
     def do_get_average_power(self):
         '''
         Return the number of averaged triggers.
@@ -616,6 +549,8 @@ class PXI_scope(Instrument):
         Regenerate config.xml and upload it to the PXI.
         '''
 
+        dio_set_times, dio_values = self._combine_flip_times()
+
         # Regenerate the config file (as string)
         template = Template(PXI_scope._config_template)
         config = template.render(points=self._points,
@@ -625,8 +560,8 @@ class PXI_scope(Instrument):
                                  ddc_per_clock=self._ddc_per_clock_scaled,
                                  int_trigger_period=self._int_trigger_period_in_clockcycles,
                                  ext_trigger=int(bool(self._ext_trigger)),
-                                 dio_set_times=self._dio_set_times,
-                                 dio_values=self._dio_values,
+                                 dio_set_times=dio_set_times,
+                                 dio_values=dio_values,
                                  dio_default=self._dio_default_value,
                                  dio_size=self._DIO_FLIPS)
 
