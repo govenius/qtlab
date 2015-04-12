@@ -27,6 +27,8 @@ import logging
 import copy
 import shutil
 import pickle
+import sys
+import traceback
 
 from gettext import gettext as _L
 
@@ -601,12 +603,16 @@ class Data(SharedGObject):
 
 ### File writing
 
-    def create_file(self, name=None, filepath=None, settings_file=True, log_file=True, log_level=logging.INFO):
+    def create_file(self, name=None, filepath=None,
+                    settings_file=True,
+                    log_file=True, log_level=logging.INFO,
+                    script_file=True):
         '''
         Create a new data file and leave it open. In addition a
         settings file is generated, unless settings_file=False is
         specified. A copy of log messages generated during the measurement
-        will also be saved, unless log_file=False.
+        will also be saved, unless log_file=False. A copy of currently
+        running script files will be saved as well, unless script_file=False.
 
         This function should be called after adding the comment and the
         coordinate and value metadata, because it writes the file header.
@@ -635,6 +641,26 @@ class Data(SharedGObject):
 
         if log_file and in_qtlab:
             self._open_log_file()
+
+        if script_file and in_qtlab:
+            stack = traceback.extract_stack()
+            scripts_found = 0
+            for j in range(len(stack)):
+              # Go through the stack. If it seems like execfile was called from
+              # the scripts module, save the contents of the target file.
+              if ( stack[j][0].strip().endswith('scripts.py') and
+                   stack[j][-1].strip().startswith('execfile')):
+                try:
+                  script_path = stack[j+1][0]
+                  with open(script_path, 'r') as script_src:
+                    scripts_found += 1
+                    script_out_fname, ext = os.path.splitext(self.get_filepath())
+                    script_out_fname += '.script%s' % (scripts_found if scripts_found>1 else '')
+                    with open(script_out_fname, 'w') as script_dst:
+                      print >> script_dst, '# Contents of script: %s' % (script_path)
+                      print >> script_dst, script_src.read()
+                except:
+                  logging.exception('Failed to read a presumed script file. The preceding stack frame was: %s', stack[j])
 
         try:
             if in_qtlab:
