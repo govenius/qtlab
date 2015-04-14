@@ -48,7 +48,7 @@ class PXI_scope(Instrument):
     # Optional: call arm() separately first and do other stuff
     # here if the acquisition is expected to take a long time
     
-    traces = pxi.get_traces(arm_first=True) # blocks until data is returned.
+    traces = pxi.get_traces(arm_first=True) # with arm_first, this blocks until data is returned.
     
     # plot the traces...
     from plot import plotbridge_plot as plt
@@ -57,7 +57,8 @@ class PXI_scope(Instrument):
     p.set_ylabel('V (mV)')
 
     p.clear()
-    for i,ch in enumerate([ 'AI0', 'AI1' ]):
+    for i,ch in enumerate([ 'AI0', 'AI1', 'AI0_stddev', 'AI1_stddev' ]):
+      # "stddev" is the pointwise standard deviation of the ensemble of averaged traces
       p.add_trace(traces['timeaxis'], traces[ch].real,
         x_plot_units=1e-6, y_plot_units=1e-3,
         points=True, lines=True,
@@ -392,24 +393,30 @@ class PXI_scope(Instrument):
                 # The sample rate is the same for both channels...
                 samplerate = objs["/'Time Domain'/'AI0_real'"][3]['Sample rate'][1]
                 
-                channels = [
+                means = [
                        np.array(rawdata["/'Time Domain'/'AI%d_real'" % ch])
                   + 1j*np.array(rawdata["/'Time Domain'/'AI%d_imag'" % ch])
+                  for ch in range(2) ]
+                stddevs = [
+                       np.array(rawdata["/'Time Domain'/'AI%d_real_std'" % ch])
+                  + 1j*np.array(rawdata["/'Time Domain'/'AI%d_imag_std'" % ch])
                   for ch in range(2) ]
                 
                 # There is a large DC offset at the inputs of the ADCs, if not properly matched to 50 Ohm at DC.
                 # This shows up in the down-converted data at negatice DDC freq.
                 # We almost never care about that, so filter it out.
-                pts = len(channels[0])
+                pts = len(means[0])
                 for ch in range(2):
-                  ft = np.fft.fft(channels[ch])
+                  ft = np.fft.fft(means[ch])
                   ft[pts/2] = 0  # Assuming that the ratio of down-sampled data frequency and DDC freq is 2
-                  channels[ch] = np.fft.ifft(ft)
+                  means[ch] = np.fft.ifft(ft)
                 
                 return OrderedDict( [
-                  ("AI0", channels[0]),
-                  ("AI1", channels[1]),
-                  ('timeaxis', np.arange(pts) / samplerate ) # time axis
+                  ("AI0", means[0]), # mean value
+                  ("AI1", means[1]),
+                  ('timeaxis', np.arange(pts) / samplerate ), # time axis
+                  ("AI0_stddev", stddevs[0]), # pointwise standard deviation
+                  ("AI1_stddev", stddevs[1])
                 ]) # convert data to a numpy array
                 
               qt.msleep(2.) # try again in a little bit
