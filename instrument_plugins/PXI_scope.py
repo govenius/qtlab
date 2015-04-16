@@ -175,7 +175,7 @@ class PXI_scope(Instrument):
         self._ddc_per_clock_scaled = 768
         self._boxcar_power = 9
         self._int_trigger_period_in_clockcycles = 100
-        self._ext_trigger = True
+        self._ext_trigger = False
 
         self._dio_default_value = 0
         self._dio_flip_times = [ tuple() for i in range(self._DIO_BITS) ]
