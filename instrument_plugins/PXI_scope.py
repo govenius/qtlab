@@ -33,6 +33,9 @@ import StringIO
 import pyTDMS
 from jinja2 import Template
 from collections import OrderedDict
+from qtflow import get_flowcontrol
+import hashlib
+import random
 
 class PXI_scope(Instrument):
     '''
@@ -114,6 +117,9 @@ class PXI_scope(Instrument):
         self._ADC_SAMPLE_RATE = 250e6 # hard coded in the FPGA
         self._CLOCK_RATE = 125e6 # hard coded in the FPGA
 
+        self._ftp = None # used to hold an open FTP session
+        self._autocloser_handle = "pxi_ftp_autocloser_%s" % (hashlib.md5(address).hexdigest()[:8])
+
         self.add_parameter('most_recent_raw_datafile',
             flags=Instrument.FLAG_GET, type=types.StringType)
 
@@ -183,7 +189,7 @@ class PXI_scope(Instrument):
         self._most_recent_trace = None
         self._datafile_prefix = 'PXI_scope_data'
 
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
     def plot_outputs(self, time_unit=1e-6):
         '''
@@ -265,7 +271,7 @@ class PXI_scope(Instrument):
         assert len(flip_times) < self._DIO_FLIPS
 
         self._dio_flip_times[channel] = np.round(np.array(flip_times)*self._CLOCK_RATE).astype(np.int).copy()
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
     def _combine_flip_times(self):
         '''
@@ -316,25 +322,27 @@ class PXI_scope(Instrument):
 
         logging.debug(__name__ + ' : arming...')
         
-        ftp = self.__get_connection()
-        try:
-          buffer = StringIO.StringIO()
-          try:
-            # First get the name of the previously acquired trace
-            ftp.retrbinary('RETR most_recent_trace.txt', buffer.write)
-            self._most_recent_trace = buffer.getvalue()
-          except ftplib.error_perm:
-            self._most_recent_trace = None # there is no previous trace
-          finally:
+        for attempt in range(5):
+          try:        
+            ftp = self._get_connection()
+
+            most_recent_trace = self._get_most_recent_trace_name_from_device()
+
+            assert(ftp.pwd().strip() == '/data/')
+            # Create a file which the PXI takes as a signal to arm
+            buffer = StringIO.StringIO()
+            buffer.write( '%s %d\n' % (time.time(), 1e9 * random.random()) )
+            buffer.seek(0)
+            ftp.storbinary('STOR ../signals/arm.signal', buffer)
             buffer.close()
-          
-          # Create an empty file which the PXI takes as a signal to arm
-          buffer = StringIO.StringIO()
-          buffer.write('\n')
-          ftp.storbinary('STOR arm.signal', buffer)
-          buffer.close()
-        finally:
-          ftp.quit()
+            assert ftp.voidcmd('NOOP').lower().strip().startswith('200 ack') # double check that the FTP connection still works
+            #print ftp.dir("../signals")
+
+            return
+          except Exception as e:
+            if str(e).strip().lower() == 'human abort': raise
+            logging.exception('Attempt %d to arm failed!', attempt)
+            qt.msleep(1. + attempt)
 
     def get_digitized_time(self):
         ''' The total amount of time digitized. '''
@@ -358,24 +366,29 @@ class PXI_scope(Instrument):
         for attempt in range(5):
         
           try:
+            ftp = self._get_connection()
+
             time_armed = time.time()
             if arm_first:
               self.arm()
-              qt.msleep( estimated_min_time )
+              logging.debug('armed. old trace: %s', self._most_recent_trace)
+
+              if estimated_min_time > 5.:
+                # don't keep the FTP session open unless the acquisition is quick
+                ftp.quit()
+                ftp = None
+
+              qt.msleep( estimated_min_time + 0.3 )
           
-            ftp = self.__get_connection()
-            while time.time() < time_armed + 60 + 4*estimated_min_time:
-              buffer = StringIO.StringIO()
-              try:
-                # Get the name of the most recently acquired data
-                ftp.retrbinary('RETR most_recent_trace.txt', buffer.write)
-                most_recent_trace = buffer.getvalue()
-              except ftplib.error_perm:
-                most_recent_trace = None # there is no previous trace or new trace (yet)
-              finally:
-                buffer.close()
+            ftp_read_attempts = 0
+            while time.time() < time_armed + 10 + 4*estimated_min_time:
+              ftp = self._get_connection() # make sure the connection is still alive
+
+              most_recent_trace = self._get_most_recent_trace_name_from_device()
+              logging.debug('most recent trace: %s', most_recent_trace)
               
               if self._most_recent_trace != most_recent_trace:
+                logging.debug('downloading trace: %s', most_recent_trace)
                 self._most_recent_trace = most_recent_trace
                 
                 # download the data to a local file
@@ -411,6 +424,9 @@ class PXI_scope(Instrument):
                   ft[pts/2] = 0  # Assuming that the ratio of down-sampled data frequency and DDC freq is 2
                   means[ch] = np.fft.ifft(ft)
                 
+                # delete the raw data file (might want to comment this out for debugging...)
+                os.unlink(local_datafilepath)
+
                 return OrderedDict( [
                   ("AI0", means[0]), # mean value
                   ("AI1", means[1]),
@@ -419,7 +435,8 @@ class PXI_scope(Instrument):
                   ("AI1_stddev", stddevs[1])
                 ]) # convert data to a numpy array
                 
-              qt.msleep(2.) # try again in a little bit
+              qt.msleep(min(0.1 + ftp_read_attempts*0.5, 5.)) # try again in a little bit
+              ftp_read_attempts += 1
 
             raise Exception('Acquisition taking too long. Estimated %g s, waited %g s.' % (
                 estimated_min_time, time.time() - time_armed) )
@@ -427,15 +444,24 @@ class PXI_scope(Instrument):
           except Exception as e:
             if str(e).strip().lower() == 'human abort': raise
             logging.exception('Attempt %d to get traces from scope failed!', attempt)
-            qt.msleep(10. + attempt*(estimated_min_time))
-          finally:
-            try: ftp.quit()
-            except: pass
+            qt.msleep(1. + attempt*(1 + estimated_min_time))
 
         assert False, 'All attempts to acquire data failed.'
         
     def do_get_most_recent_raw_datafile(self):
         return self._most_recent_trace
+
+    def _get_most_recent_trace_name_from_device(self):
+        buffer = StringIO.StringIO()
+        ftp = self._get_connection()
+        try:
+          # Get the name of the most recently acquired data
+          ftp.retrbinary('RETR most_recent_trace.txt', buffer.write)
+          return buffer.getvalue()
+        except ftplib.error_perm:
+          return None # there is no previous trace or new trace (yet)
+        finally:
+          buffer.close()
 
     def do_get_datafile_prefix(self):
         return self._datafile_prefix
@@ -445,7 +471,7 @@ class PXI_scope(Instrument):
         Set the datafile_prefix. Only affects the naming of the raw data file.
         '''
         self._datafile_prefix = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
     def do_get_points(self):
         '''
@@ -457,7 +483,7 @@ class PXI_scope(Instrument):
         Set the number of returned points per trace.
         '''
         self._points = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
     def do_get_boxcar_power(self):
         '''
@@ -471,7 +497,7 @@ class PXI_scope(Instrument):
         right after DDC.
         '''
         self._boxcar_power = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
     def do_get_ddc_per_clock_scaled(self):
         '''
@@ -485,7 +511,7 @@ class PXI_scope(Instrument):
         as (DDC freq./clock freq.)*2^16.
         '''
         self._ddc_per_clock_scaled = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
 
     def do_get_int_trigger_period_in_clockcycles(self):
@@ -500,7 +526,7 @@ class PXI_scope(Instrument):
         in clock cycles.
         '''
         self._int_trigger_period_in_clockcycles = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
     def do_get_ext_trigger(self):
         '''
@@ -514,7 +540,7 @@ class PXI_scope(Instrument):
         Otherwise the internal trigger generator is used.
         '''
         self._ext_trigger = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
 
     def do_get_dio_default_value(self):
@@ -529,7 +555,7 @@ class PXI_scope(Instrument):
         Specified as an 8-bit mask.
         '''
         self._dio_default_value = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
     def do_get_average_power(self):
         '''
@@ -543,15 +569,54 @@ class PXI_scope(Instrument):
         Specified as a power of two! E.g. 8 means 2**8 averages.
         '''
         self._average_power = val
-        self.__regenerate_config_xml()
+        self._regenerate_config_xml()
 
-    def __get_connection(self, change_to_datadir=True):
-        ftp = ftplib.FTP(self._address, timeout=3)
-        ftp.login('USER', 'PASS')
-        if change_to_datadir: ftp.cwd('data')
-        return ftp
+    def _get_connection(self, change_to_datadir=True):
+        ''' If a session exists, check that if it still works and use it. Otherwise create a new session. '''
 
-    def __regenerate_config_xml(self):
+        ftp = None
+        if self._ftp != None:
+          try:
+            resp = self._ftp.voidcmd('NOOP')
+            if resp.lower().strip().startswith('200 ack'):
+              # the old sessions seems to work so use it.
+              ftp = self._ftp
+            else:
+              raise Exception('Unrecognized response from the PXI FTP server: %s' % resp)
+          except:
+            # old session timed out or we didn't get an ACK.
+            # either way, open a new session.
+            logging.exception('Replacing old FTP session.')
+            try: self._ftp.quit()
+            except: pass
+
+        if ftp == None:
+          ftp = ftplib.FTP(self._address, timeout=1)
+          ftp.login('USER', 'PASS')
+          self._ftp_refreshed = time.time()
+
+          get_flowcontrol().remove_callback(self._autocloser_handle, warn_if_nonexistent=False)
+          get_flowcontrol().register_callback(int(1e3 * 8),
+                                              self._autoclose_connection,
+                                              handle=self._autocloser_handle)
+
+        if change_to_datadir: ftp.cwd('/data')
+        self._ftp = ftp
+
+        self._ftp_refreshed = time.time()
+        return self._ftp
+
+    def _autoclose_connection(self):
+        if time.time() - self._ftp_refreshed < 5:
+          return True # the session was recently used. Do nothing but keep calling back
+
+        # otherwise close the connection
+        try: self._ftp.quit()
+        except: pass
+        self._ftp = None
+        return False # don't call back anymore
+
+    def _regenerate_config_xml(self):
         '''
         Regenerate config.xml and upload it to the PXI.
         '''
@@ -573,16 +638,12 @@ class PXI_scope(Instrument):
                                  dio_size=self._DIO_FLIPS)
 
         # Upload it to the target
-        ftp = self.__get_connection(change_to_datadir=False)
-        try:
-          # Create an empty file which the PXI takes as a signal to arm
-          buffer = StringIO.StringIO(config)
-          ftp.storbinary('STOR Config.xml', buffer)
-          buffer.close()
-        finally:
-          ftp.quit()
+        ftp = self._get_connection(change_to_datadir=False)
 
-
+        # Create an empty file which the PXI takes as a signal to arm
+        buffer = StringIO.StringIO(config)
+        ftp.storbinary('STOR Config.xml', buffer)
+        buffer.close()
 
     _config_template = (
 '''<?xml version='1.0' standalone='yes' ?>
