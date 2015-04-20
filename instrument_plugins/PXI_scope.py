@@ -326,12 +326,11 @@ class PXI_scope(Instrument):
           try:        
             ftp = self._get_connection()
 
-            most_recent_trace = self._get_most_recent_trace_name_from_device()
-
             assert(ftp.pwd().strip() == '/data/')
             # Create a file which the PXI takes as a signal to arm
             buffer = StringIO.StringIO()
-            buffer.write( '%s %d\n' % (time.time(), 1e9 * random.random()) )
+            self._armed_trace_name = '%x_%x.tdms' % (1e3*time.time(), 1e9 * random.random())
+            buffer.write( self._armed_trace_name )
             buffer.seek(0)
             ftp.storbinary('STOR ../signals/arm.signal', buffer)
             buffer.close()
@@ -388,18 +387,23 @@ class PXI_scope(Instrument):
                 self._ftp = None
                 ftp = None
 
-              qt.msleep( estimated_min_time + 0.3 )
+              qt.msleep( estimated_min_time + 0.2 )
           
-            ftp_read_attempts = 0
+            ftp_read_attempt = 0
             while time.time() < time_armed + 10 + 4*estimated_min_time:
+              assert self._armed_trace_name != None, 'Did you call arm() first?'
+
+              # some extra sleep if the last attempt failed
+              if attempt>0: qt.msleep(attempt*(1 + estimated_min_time))
+              if ftp_read_attempt>0: qt.msleep(min(ftp_read_attempt*0.5, 5.)) # try again in a little bit
+
               ftp = self._get_connection() # make sure the connection is still alive
 
               most_recent_trace = self._get_most_recent_trace_name_from_device()
-              logging.debug('most recent trace: %s', most_recent_trace)
+              logging.debug('most recent trace: %s (expecting %s)', most_recent_trace, self._armed_trace_name)
               
-              if self._most_recent_trace != most_recent_trace:
+              if most_recent_trace.strip().lower().endswith(self._armed_trace_name.strip().lower()):
                 logging.debug('downloading trace: %s', most_recent_trace)
-                self._most_recent_trace = most_recent_trace
                 
                 # download the data to a local file
                 most_recent_trace = os.path.split(most_recent_trace)[-1] # strip path, keep filename only
@@ -437,6 +441,9 @@ class PXI_scope(Instrument):
                 # delete the raw data file (might want to comment this out for debugging...)
                 os.unlink(local_datafilepath)
 
+                self._most_recent_trace = most_recent_trace
+                self._armed_trace_name = None
+
                 return OrderedDict( [
                   ("AI0", means[0]), # mean value
                   ("AI1", means[1]),
@@ -445,8 +452,8 @@ class PXI_scope(Instrument):
                   ("AI1_stddev", stddevs[1])
                 ]) # convert data to a numpy array
                 
-              qt.msleep(min(0.1 + ftp_read_attempts*0.5, 5.)) # try again in a little bit
-              ftp_read_attempts += 1
+              qt.msleep(0.1) # try again in a little bit
+              ftp_read_attempt += 1
 
             raise Exception('Acquisition taking too long. Estimated %g s, waited %g s.' % (
                 estimated_min_time, time.time() - time_armed) )
@@ -454,7 +461,7 @@ class PXI_scope(Instrument):
           except Exception as e:
             if str(e).strip().lower() == 'human abort': raise
             logging.exception('Attempt %d to get traces from scope failed!', attempt)
-            qt.msleep(1. + attempt*(1 + estimated_min_time))
+            qt.msleep(1.)
 
         assert False, 'All attempts to acquire data failed.'
         
@@ -621,9 +628,10 @@ class PXI_scope(Instrument):
           return True # the session was recently used. Do nothing but keep calling back
 
         # otherwise close the connection
-        try: self._ftp.quit()
-        except: pass
+        f = self._ftp
         self._ftp = None
+        try: f.quit()
+        except: pass
         return False # don't call back anymore
 
     def _regenerate_config_xml(self):
