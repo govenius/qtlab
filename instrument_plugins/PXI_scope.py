@@ -353,10 +353,15 @@ class PXI_scope(Instrument):
         ''' Give a lower bound for the acquisition time.
         This is close to exact if the time spent waiting for triggers can be ignored. '''
         averages = 2**(self.get_average_power())
+        digitized_time = self.get_digitized_time()
         if self.get_ext_trigger():
-          return self.get_digitized_time() * averages
+          return digitized_time * averages
         else:
-          return (self.get_int_trigger_period_in_clockcycles()/self._CLOCK_RATE) * averages
+          trig_period = (self.get_int_trigger_period_in_clockcycles()/self._CLOCK_RATE)
+          if trig_period >= digitized_time:
+            return trig_period*averages
+          else:
+            return np.ceil(digitized_time/trig_period)*trig_period * averages - trig_period
 
     def get_traces(self, arm_first=False):
         '''
