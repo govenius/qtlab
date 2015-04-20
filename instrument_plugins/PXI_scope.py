@@ -380,6 +380,7 @@ class PXI_scope(Instrument):
               if estimated_min_time > 5.:
                 # don't keep the FTP session open unless the acquisition is quick
                 ftp.quit()
+                self._ftp = None
                 ftp = None
 
               qt.msleep( estimated_min_time + 0.3 )
