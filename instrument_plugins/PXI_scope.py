@@ -352,7 +352,11 @@ class PXI_scope(Instrument):
     def estimate_min_acquisition_time(self):
         ''' Give a lower bound for the acquisition time.
         This is close to exact if the time spent waiting for triggers can be ignored. '''
-        return self.get_digitized_time() * 2**(self.get_average_power())
+        averages = 2**(self.get_average_power())
+        if self.get_ext_trigger():
+          return self.get_digitized_time() * averages
+        else:
+          return (self.get_int_trigger_period_in_clockcycles()/self._CLOCK_RATE) * averages
 
     def get_traces(self, arm_first=False):
         '''
