@@ -380,6 +380,8 @@ class PXI_scope(Instrument):
         estimated_min_time = self.estimate_min_acquisition_time()
         
         for attempt in range(5):
+
+          most_recent_trace = None
         
           try:
             ftp = self._get_connection()
@@ -470,7 +472,7 @@ class PXI_scope(Instrument):
 
           except Exception as e:
             if str(e).strip().lower() == 'human abort': raise
-            logging.exception('Attempt %d to get traces from scope failed!', attempt)
+            logging.exception('Attempt %d to get traces from scope failed!\nmost recent trace: %s (expecting %s)', attempt, most_recent_trace, self._armed_trace_name)
             qt.msleep(1.)
 
         assert False, 'All attempts to acquire data failed.'
