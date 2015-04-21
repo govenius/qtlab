@@ -327,15 +327,23 @@ class PXI_scope(Instrument):
             ftp = self._get_connection()
 
             assert(ftp.pwd().strip() == '/data/')
+
             # Create a file which the PXI takes as a signal to arm
             buffer = StringIO.StringIO()
             self._armed_trace_name = '%x_%x.tdms' % (1e3*time.time(), 1e9 * random.random())
             buffer.write( self._armed_trace_name )
             buffer.seek(0)
-            ftp.storbinary('STOR ../signals/arm.signal', buffer)
+            arm_signal_path = '../signals/arm.signal'
+            ftp.storbinary('STOR %s_' % arm_signal_path, buffer) # write to a temp file first
             buffer.close()
-            assert ftp.voidcmd('NOOP').lower().strip().startswith('200 ack') # double check that the FTP connection still works
+
             #print ftp.dir("../signals")
+
+            # Rename the temp file
+            # (an atomic operation on most file systems...)
+            ftp.rename('%s_' % arm_signal_path, arm_signal_path)
+
+            assert ftp.voidcmd('NOOP').lower().strip().startswith('200 ack') # double check that the FTP connection still works
 
             return
           except Exception as e:
