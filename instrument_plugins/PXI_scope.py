@@ -398,7 +398,9 @@ class PXI_scope(Instrument):
               qt.msleep( estimated_min_time + 0.2 )
           
             ftp_read_attempt = 0
-            while time.time() < time_armed + 10 + 4*estimated_min_time:
+            while time.time() < (time_armed
+                                 +1 +estimated_min_time
+                                 +(9 + 3*estimated_min_time if self.get_ext_trigger() else 0)):
               assert self._armed_trace_name != None, 'Did you call arm() first?'
 
               # some extra sleep if the last attempt failed
