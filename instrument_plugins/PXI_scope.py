@@ -401,7 +401,7 @@ class PXI_scope(Instrument):
           
             ftp_read_attempt = 0
             while time.time() < (time_armed
-                                 +1 +estimated_min_time
+                                 +1 +2*estimated_min_time
                                  +(9 + 3*estimated_min_time if self.get_ext_trigger() else 0)):
               assert self._armed_trace_name != None, 'Did you call arm() first?'
 
