@@ -666,13 +666,15 @@ class PXI_scope(Instrument):
                                  dio_values=dio_values,
                                  dio_default=self._dio_default_value,
                                  dio_size=self._DIO_FLIPS)
+        buffer = StringIO.StringIO(config)
+        buffer.seek(0)
 
         # Upload it to the target
+        config_fname = 'Config.xml'
         ftp = self._get_connection(change_to_datadir=False)
-
-        # Create an empty file which the PXI takes as a signal to arm
-        buffer = StringIO.StringIO(config)
-        ftp.storbinary('STOR Config.xml', buffer)
+        ftp.cwd('/')
+        ftp.delete(config_fname)
+        ftp.storbinary('STOR %s' % config_fname, buffer)
         buffer.close()
 
     _config_template = (
