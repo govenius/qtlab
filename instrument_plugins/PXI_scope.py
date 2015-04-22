@@ -148,7 +148,7 @@ class PXI_scope(Instrument):
         Output:
             None
         '''
-        logging.info(__name__ + ' : get all')
+        logging.debug(__name__ + ' : get all')
 
         self.get_points()
         self.get_average_power()
