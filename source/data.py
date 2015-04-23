@@ -206,6 +206,7 @@ class Data(SharedGObject):
     _META_STEPRE = re.compile('^#.*[ \t](\d+) steps', re.I)
     _META_COLRE = re.compile('^#.*Column ?(\d+)', re.I)
     _META_COMMENTRE = re.compile('^#(.*)', re.I)
+    _META_NEWLINE_IN_COMMENT = '#_' # replace \n in comments by this and vice versa when parsing
 
     _INT_TYPES = (
             types.IntType, types.LongType,
@@ -595,7 +596,7 @@ class Data(SharedGObject):
         '''Add comment to the Data object.'''
         self._comment.append([self.get_npoints(), comment])
         if self._file is not None:
-            self._file.write('# %s\n' % comment)
+            self._file.write('# %s\n' % comment.replace('\n', "\n%s" % (self._META_NEWLINE_IN_COMMENT)))
 
     def get_comment(self, include_row_numbers=False):
         '''Return the comment for the Data object.'''
@@ -1292,7 +1293,18 @@ class Data(SharedGObject):
 
         m = self._META_COMMENTRE.match(line)
         if m is not None:
-            self._comment.append( (line_number, m.group(1)) )
+            is_continued_comment = line.startswith(self._META_NEWLINE_IN_COMMENT)
+            if len(self._comment) < 1:
+                logging.warn('Comment %s looks like a continuation of a previous comment but there are no previous comments!')
+                is_continued_comment = False
+            if not is_continued_comment:
+                self._comment.append( (line_number, m.group(1)) )
+            else:
+                # append to the previous comment
+                self._comment[-1] = (self._comment[-1][0],
+                                     "%s\n%s" % (self._comment[-1][1],
+                                                 '\n',
+                                                 line[len(self._META_NEWLINE_IN_COMMENT):]) )
 
     def _reshape_data(self):
         '''
