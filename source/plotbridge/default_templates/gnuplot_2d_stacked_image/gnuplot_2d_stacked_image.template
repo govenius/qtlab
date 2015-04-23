@@ -121,7 +121,7 @@ splot \
 
 ## List of slow coordinate values (if any)
 {% for trace in traces %}
-{% if trace.slowcoordinate %}# {{trace.npyfile}} slowcoord = {{trace.slowcoordinate}}
+{% if trace.slowcoordinate != None %}# {{trace.npyfile}} slowcoord = {{trace.slowcoordinate}}
 {% endif %}
 {% endfor %}
 
