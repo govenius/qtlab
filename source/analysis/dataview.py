@@ -545,8 +545,7 @@ class DataView():
             else: vals[prev_match_on_row:] = ( prev_val for jjj in range(len(vals)-prev_match_on_row) )
             
 
-            self.add_virtual_dimension(name, arr=vals)
-            return
+            return self.add_virtual_dimension(name, arr=vals, return_result=return_result)
 
         if cache_fn_values and arr==None:
             old_mask = self.get_mask().copy() # backup the mask
@@ -554,8 +553,7 @@ class DataView():
             vals = fn(self)
             self.mask_rows(old_mask) # restore the mask
 
-            self.add_virtual_dimension(name, arr=vals, cache_fn_values=False)
-            return
+            return self.add_virtual_dimension(name, arr=vals, cache_fn_values=False, return_result=return_result)
 
         if return_result:
           return arr
