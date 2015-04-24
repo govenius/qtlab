@@ -1294,8 +1294,8 @@ class Data(SharedGObject):
         m = self._META_COMMENTRE.match(line)
         if m is not None:
             is_continued_comment = line.startswith(self._META_NEWLINE_IN_COMMENT)
-            if len(self._comment) < 1:
-                logging.warn('Comment %s looks like a continuation of a previous comment but there are no previous comments!')
+            if is_continued_comment and len(self._comment) < 1:
+                logging.warn('Comment "%s" looks like a continuation of a previous comment but there are no previous comments!', line)
                 is_continued_comment = False
             if not is_continued_comment:
                 self._comment.append( (line_number, m.group(1)) )
@@ -1303,7 +1303,6 @@ class Data(SharedGObject):
                 # append to the previous comment
                 self._comment[-1] = (self._comment[-1][0],
                                      "%s\n%s" % (self._comment[-1][1],
-                                                 '\n',
                                                  line[len(self._META_NEWLINE_IN_COMMENT):]) )
 
     def _reshape_data(self):
