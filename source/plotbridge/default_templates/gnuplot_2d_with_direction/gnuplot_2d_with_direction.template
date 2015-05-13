@@ -25,7 +25,10 @@ basefont = "Times,{% if global_opts.basefontsize %}{{ global_opts.basefontsize }
 baselinewidth = 2.
 
 {% if global_opts.export_png %}
-set terminal pngcairo size figwidth,figheight enhanced \
+pngdpi_per_screendpi = 96./72
+figwidthinpng = ceil(figwidth*pngdpi_per_screendpi)
+figheightinpng = ceil(figheight*pngdpi_per_screendpi)
+set terminal pngcairo size figwidthinpng,figheightinpng enhanced \
     font basefont linewidth baselinewidth
 set output "output.png"
 {% endif %}
