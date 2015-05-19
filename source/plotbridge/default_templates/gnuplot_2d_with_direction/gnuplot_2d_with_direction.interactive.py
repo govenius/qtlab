@@ -49,8 +49,8 @@ exit_if_locked() # technically, this and the lock file creation should be done a
 try:
   refresh_lock()
 
-  file_to_monitor = 'vectorized_traces_updated'
-  files_that_must_exist = [ file_to_monitor, plot_script ]
+  file_to_monitor = plot_script
+  files_that_must_exist = [ plot_script ]
 
   plotted_once = False
 
@@ -85,13 +85,15 @@ try:
             plot_last_changed_time = plot_changed_time
 
           # convert EPS to PDF
-          if os.path.isfile('output.eps'):
+          eps_to_watch = 'output.tex' #'output.eps'
+          if os.path.isfile(eps_to_watch):
             try:
-              eps_changed_time = os.path.getmtime('output.eps')
+              eps_changed_time = os.path.getmtime(eps_to_watch)
               if eps_changed_time != eps_last_changed_time:
                 eps_last_changed_time = eps_changed_time
                 with open(os.devnull, 'wb') as DEVNULL:
-                  subprocess.call(['ps2pdf', '-dEPSCrop', 'output.eps'], stdin=None, stdout=DEVNULL, stderr=DEVNULL)
+                  subprocess.call(['pdflatex', 'output'], stdin=None, stdout=DEVNULL, stderr=DEVNULL)
+                  #subprocess.call(['ps2pdf', '-dEPSCrop', eps_to_watch], stdin=None, stdout=DEVNULL, stderr=DEVNULL)
             except:
               pass # can fail because ps2pdf is not installed or because EPS is not fully generated yet
 

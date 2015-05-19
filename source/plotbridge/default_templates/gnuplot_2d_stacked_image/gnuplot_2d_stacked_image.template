@@ -31,6 +31,24 @@ figheightinpng = ceil(figheight*pngdpi_per_screendpi)
 set terminal pngcairo size figwidthinpng,figheightinpng enhanced \
     font basefont linewidth baselinewidth
 set output "output.png"
+
+{% elif global_opts.export_eps %}
+
+dpi = 72. # This affects only the figure size computation (and therefore the figure size/font size ratio)
+figwidthinches = figwidth/dpi
+figheightinches = figheight/dpi
+
+set terminal epslatex size figwidthinches,figheightinches color colortext standalone \
+    header "\\newcommand{\\ft}[0]{\\footnotesize}"
+   # \ font basefont linewidth baselinewidth
+set output "output.tex"
+
+#set terminal postscript eps size figwidthinches,figheightinches enhanced color \
+#    font basefont linewidth baselinewidth
+#set output "output.eps"
+#replot
+### To convert to PDF and to fix bounding box: ps2pdf -dEPSCrop output.eps
+
 {% endif %}
 
 
@@ -131,23 +149,7 @@ splot \
 {% endif %}
 
 
-###
-# Some useful alternative output formats
-###
-
 {% if traces %}
-
-{% if global_opts.export_eps %}
-dpi = 72 # This affects only the figure size computation (and therefore the figure size/font size ratio)
-figwidthinches = figwidth/dpi
-figheightinches = figheight/dpi
-
-set terminal postscript eps size figwidthinches,figheightinches enhanced color \
-    font basefont linewidth baselinewidth
-set output "output.eps"
-replot
-## To convert to PDF and to fix bounding box: ps2pdf -dEPSCrop output.eps
-{% endif %}
 
 {% if global_opts.show_on_screen %}
 set term wxt enhanced size figwidth,figheight {% if global_opts.title %}title "{{ global_opts.title }}"{% endif %}
@@ -158,24 +160,3 @@ bind Close "exit gnuplot"
 
 {% endif %}
 
-
-{#
-        #pause -1  "Press enter to exit."
-
-        'formatx': 'set format x "%s"\n',
-        'formaty': 'set format y "%s"\n',
-        'formaty2': 'set format y2 "%s"\n',
-
-        'xdata': 'set xdata %s\n',
-        'x2data': 'set x2data %s\n',
-        'ydata': 'set ydata %s\n',
-        'y2data': 'set y2data %s\n',
-        'zdata': 'set zdata %s\n',
-        'cbdata': 'set cbdata %s\n',
-
-        'timefmt': 'set timefmt %s\n',
-
-        'datastyle': 'set style data %s\n',
-
-        'plottitle': 'set title "%s"\n',
-#}
