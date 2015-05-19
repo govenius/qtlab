@@ -67,7 +67,7 @@ set output "output.png"
 {% endif %}
 
 
-{% if global_opts.title %}set title "{{ global_opts.title }}"
+{% if global_opts.title != None %}set title "{{ global_opts.title }}"
 {% endif %}
 
 ###
