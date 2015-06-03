@@ -105,4 +105,4 @@ data.close_file()
 qt.mend()
 
 # See examples/plots.py and examples/analysis_with_dataview.py for examples of plotting
-# otherwise processing your data.
+# and otherwise processing your data.

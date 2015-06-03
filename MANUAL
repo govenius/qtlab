@@ -106,7 +106,7 @@ that are present in the real instrument object by default are not shown when
 typing ins.<tab> in IPython. If you ever need to access the real instrument
 object, you can use the '_ins' property (e.g. dmm1._ins).
 
-2.1.2. Writing an instrument
+2.1.2. Writing an instrument driver
 There are many instrument drivers available in the standard distribution. They
 are quite good examples of most features.
 
