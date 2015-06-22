@@ -49,8 +49,8 @@ exit_if_locked() # technically, this and the lock file creation should be done a
 try:
   refresh_lock()
 
-  file_to_monitor = plot_script
-  files_that_must_exist = [ plot_script ]
+  file_to_monitor = 'image_matrix.gnuplot_binary_matrix'
+  files_that_must_exist = [ file_to_monitor, plot_script ]
 
   plotted_once = False
 
