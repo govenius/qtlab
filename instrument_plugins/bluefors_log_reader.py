@@ -190,6 +190,43 @@ class bluefors_log_reader(Instrument):
         return self.__interpolate_value_at_time(
           'R%d' % channel, lambda t: self.__load_data(t, 'CH%s R %%s.log' % channel), t)
 
+    def get_boolean_channels(self, t=None):
+        '''
+        Gets the boolean channel values at time t.
+
+        Input:
+            channel -- channel no.
+            t -- datetime object or a pair of them.
+                 If a pair, all recorded points between are returned.
+
+        Output:
+            Dictionary of all boolean channels.
+        '''
+
+        logging.debug(__name__ + ' : getting boolean channels at t = {0}'.format(str(t)))
+        
+        n_boolean_channels = 29
+        formats = ['i8'] # + 1 integer right after the timestamp
+        for i in range(n_boolean_channels): formats.append('S20'); formats.append('i1')
+
+        def load_boolean_channels_data(t):
+          dd = self.__load_data(t, 'Channels %s.log',
+                                valueformats=formats )
+
+          if dd == None or len(dd) == 0: raise Exception('load_data returned %s.' % dd)
+
+          # Convert to dict
+          # Not sure what the first value after the timestamp is... Code running status code?
+          # Drop it.
+          dd = map(lambda r: [ r[0], dict(zip(r[2::2], r[3::2])) ],
+                   dd)
+
+          return np.array(dd)
+	
+        return self.__interpolate_value_at_time('boolean_channels', load_boolean_channels_data, t,
+                                                interpolation_kind='previous',
+                                                value_if_data_not_available=None)
+
     def get_pressure(self, channel, t=None):
         '''
         Gets the pressure of channel at time t.
@@ -382,7 +419,8 @@ class bluefors_log_reader(Instrument):
       return (tstart, tend)
 
     def plot(self, start=None, end=None, time_since_start_of_day=False,
-             flow=False, temperatures=True, resistances=False, pressures=False, turbo=False, compressor=False):
+             flow=False, temperatures=True, resistances=False, pressures=False,
+             turbo=False, compressor=False, heatswitches=False):
       '''
       Plot statistics for the time range (start, end), specified as datetime objects,
       or alternatively, as strings in the "YY-MM-DD" format.
@@ -426,20 +464,44 @@ class bluefors_log_reader(Instrument):
 
       quantities_to_plot = []
 
+      if heatswitches:
+        booleans = self.get_boolean_channels(ends)
+        if booleans != None:
+          def bool_channel_as_vector_of_tuples(ch_name, offset=0):
+            times = np.array([ b[0] for b in booleans ])
+            vals = np.array([ offset + b[1][ch_name] for b in booleans ])
+
+            # duplicate the points so that we get horizontal and vertical lines in line plots
+            times = np.array([ times[:-1], times[1:] ]).T.reshape((-1))
+            times = np.append(times, [ times[-1] ])
+            vals = np.array([ vals[:], vals[:] ]).T.reshape((-1))[:-1]
+            return np.array([times, vals]).T
+
+          quantities_to_plot.append( ('hs-still', bool_channel_as_vector_of_tuples('hs-still',0.1), 0, 5 ) )
+          quantities_to_plot.append( ('hs-mc', bool_channel_as_vector_of_tuples('hs-mc',0.15), 1, 5 ) )
+
       if flow:
-        quantities_to_plot.append( ('flow (mmol/s)', self.get_flow(ends), 0, 5 ) )
+        q = self.get_flow(ends)
+        if isinstance(q, np.ndarray):
+          quantities_to_plot.append( ('flow (mmol/s)', q, 0, 5 ) )
 
       if temperatures:
         for ch in self._tchannels:
-          quantities_to_plot.append( ('T%s (K)' % ch, self.get_temperature(ch, ends), ch, 7 ) )
+          q = self.get_temperature(ch, ends)
+          if isinstance(q, np.ndarray):
+            quantities_to_plot.append( ('T%s (K)' % ch, q, ch, 7 ) )
 
       if resistances:
         for ch in self._rchannels:
-          quantities_to_plot.append( ('R%s ({/Symbol O})' % ch, self.get_resistance(ch, ends), ch, 8 ) )
+          q = self.get_resistance(ch, ends)
+          if isinstance(q, np.ndarray):
+            quantities_to_plot.append( ('R%s ({/Symbol O})' % ch, q, ch, 8 ) )
 
       if pressures:
         for ch in self._pchannels:
-          quantities_to_plot.append( ('P%s (mBar)' % ch, self.get_pressure(ch, ends), ch, 6 ) )
+          q = self.get_pressure(ch, ends)
+          if isinstance(q, np.ndarray):
+            quantities_to_plot.append( ('P%s (mBar)' % ch, q, ch, 6 ) )
 
       prefixes = []
       if turbo: prefixes.append('turbo ')
@@ -450,9 +512,10 @@ class bluefors_log_reader(Instrument):
             param, units = param_and_units
 
             if param.startswith(prefix):
-              quantities_to_plot.append( ('%s (%s)' % (param.replace('_',' '), units),
-                getattr(self, 'get_%s' % param.replace(' ','_'))(ends),
-                paramno, 9 if prefix.startswith('turbo') else 10 ) )
+              q = getattr(self, 'get_%s' % param.replace(' ','_'))(ends)
+              if isinstance(q, np.ndarray):
+                quantities_to_plot.append( ('%s (%s)' % (param.replace('_',' '), units),
+                  q, paramno, 9 if prefix.startswith('turbo') else 10 ) )
 
       for title,pts,color,pointtype in quantities_to_plot:
         ref_time = datetime.datetime(ends[0].year, ends[0].month, ends[0].day, 0, 0, tzinfo=tz.tzlocal()) if time_since_start_of_day else ends[0]
@@ -471,18 +534,19 @@ class bluefors_log_reader(Instrument):
 
       return ends
 
-    def __interpolate_value_at_time(self, value_name, load_data, at_time=None, interpolation_kind='linear', cache_life_time=10.):
+    def __interpolate_value_at_time(self, value_name, load_data, at_time=None, interpolation_kind='linear', cache_life_time=10., value_if_data_not_available=np.nan):
         '''
         Returns the interpolated value at 'at_time' based on the data loaded by the load_data function.
 
         Input:
             load_data(t)  -- function that loads the data in the neighborhood of time t
-                             as a sequence of pairs [timestamp_as_datetime, value_as_float]
+                             as a sequence of pairs [timestamp_as_datetime, value0_as_float, value1_as_float, ...]
             at_time    -- time to interpolate to, given as a datetime object.
                           Alternatively, at_time can be a pair of datetime objects specifying
                           a time range for which all recorded points are returned.
             value_name -- the value being queried, e.g. T1, T2, ... P1, P2, ...
             cache_life_time -- specifies how long previously parsed data is used (in seconds) before reparsing
+            value_if_data_not_available -- what to return if loading real data was unsuccessful
             
         Output:
             Interpolated value at 'at_time'. Latest value if at_time==None.
@@ -528,8 +592,8 @@ class bluefors_log_reader(Instrument):
             data = load_data(t)
             if data == None or len(data) == 0: raise Exception('load_data returned %s.' % data)
           except Exception as e:
-            logging.exception('Could not load %s at %s. Returning NaN.' % (value_name, str(t)))
-            return np.NaN
+            logging.exception('Could not load %s at %s. Returning %s.' % (value_name, str(t), value_if_data_not_available))
+            return value_if_data_not_available
                                                     
           try:
             with open(cache_file_path, 'wb') as f:
@@ -542,14 +606,25 @@ class bluefors_log_reader(Instrument):
         if at_time==None:
           if (t - data[-1][0]).total_seconds() > 305:
             logging.warn('last %s point from %s ago.' % (value_name, str(t - data[-1][0])))
-          return data[-1][1]
+          columns_to_return = 1 if len(data[-1]) == 2 else slice(1,None)
+          return data[-1][columns_to_return]
 
         # if a range was specified, return all points in it
         if range_given:
-          return data[np.logical_and(data[:,0] >= t[0], data[:,0] <= t[1])]
+          timestamps = data[:,0]
+          return data[np.logical_and(timestamps >= t[0], timestamps <= t[1])]
       
         # create the interpolating function
-        interpolating_fn = interpolate.interp1d([ (d[0] - self._UNIX_EPOCH).total_seconds() for d in data ], data[:,1],
+        val_times = [ (d[0] - self._UNIX_EPOCH).total_seconds() for d in data ]
+        vals = data[:,1]
+
+        if interpolation_kind == 'previous':
+          def interpolating_fn(ttt):
+            assert np.isscalar(ttt)
+            return vals[val_times < ttt][-1]
+
+        else:
+          interpolating_fn = interpolate.interp1d(val_times, vals,
                                                   kind=interpolation_kind, bounds_error=True)
 
         # finally use the interpolation function
