@@ -338,6 +338,72 @@ class bluefors_log_reader(Instrument):
       if scalar_input: return t6[0]
       else:            return t6
 
+    def get_peak_values(self, channel='P5', time_periods=None, minimum=False, plot=False):
+      '''
+      Get the maximum value for the specified parameter over the specified time periods.
+
+      The "channel" can be, e.g., 'P1', 'P2', 'T1', 'T2', 'oil_temperature'...
+
+      If minimum=True, return the minimum instead of maximum.
+
+      In combination with find_cooldown(all_between=...) this is a nice way of following
+      changes in tank pressure, compressor oil temperature, or base temperature
+      over months or years.
+
+      # For example:
+      all_cd = bflog.find_cooldown(all_between=['12-03-22', '15-06-25']) # slow
+      bflog.get_peak_values('P5', all_cd, plot=True)
+      '''
+
+      get_vals = None
+
+      if channel.lower().startswith('oil temperature') or channel.lower() == 'toil':
+          get_vals = self.get_compressor_oil_temperature
+      if channel.lower().startswith('water in temperature') or channel.lower() == 'twaterin':
+          get_vals = self.get_compressor_water_in_temperature
+      if channel.lower().startswith('water out temperature') or channel.lower() == 'twaterout':
+          get_vals = self.get_compressor_water_out_temperature
+      if channel.lower().startswith('p'):
+          get_vals = lambda x, ch=int(channel[1:]): getattr(self, 'get_pressure')(ch, x)
+      if channel.lower().startswith('t'):
+          get_vals = lambda x, ch=int(channel[1:]): getattr(self, 'get_temperature')(ch, x)
+
+      assert get_vals != None, 'Unknown channel %s' % channel
+
+
+      def peak_fn(time_and_value_pairs):
+        try:
+          max_index = (np.argmin if minimum else np.argmax)(time_and_value_pairs[:,1])
+          return time_and_value_pairs[max_index]
+        except:
+          return [np.nan, np.nan]
+
+      time_and_peak_pairs = [ peak_fn( get_vals(ends) ) for ends in time_periods ]
+      time_and_peak_pairs = np.array(filter(lambda x: isinstance(x[0], datetime.datetime),
+                                            time_and_peak_pairs))
+
+      if plot:
+        import plot
+        plt_name = 'BlueFors - peak %s from %s to %s' % (channel, time_and_peak_pairs[0][0].strftime('%Y-%m-%d'), time_and_peak_pairs[-1][0].strftime('%Y-%m-%d'))
+        p = plot.get_plot(plt_name).get_plot()
+        p.clear()
+
+        p.set_title(plt_name)
+        p.set_xlabel('time (days)')
+        #p.set_ylog(True)
+
+        ref_time = datetime.datetime(time_and_peak_pairs[0][0].year,
+                                     time_and_peak_pairs[0][0].month,
+                                     time_and_peak_pairs[0][0].day,
+                                     0, 0, tzinfo=tz.tzlocal())
+        hours_since_beginning = np.array([ (t - ref_time).total_seconds() for t in time_and_peak_pairs[:,0] ])/3600.
+        p.add_trace(hours_since_beginning/24., time_and_peak_pairs[:,1].astype(np.float),
+                    points=True, lines=True, title=channel)
+        p.update()
+        p.run()
+
+      return time_and_peak_pairs
+
     def find_cooldown(self, near=None, forward_search=False, all_between=None):
       '''
       Find the start and end time of a cooldown (returned as a pair of datetime objects).
