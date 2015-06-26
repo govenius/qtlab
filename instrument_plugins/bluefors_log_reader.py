@@ -338,14 +338,36 @@ class bluefors_log_reader(Instrument):
       if scalar_input: return t6[0]
       else:            return t6
 
-    def find_cooldown(self, near=None, forward_search=False):
+    def find_cooldown(self, near=None, forward_search=False, all_between=None):
       '''
       Find the start and end time of a cooldown (returned as a pair of datetime objects).
 
       near --- datetime object to begin the search from. Default is current time.
                Alternatively, can be a string in the "YY-MM-DD" format.
       forward_search --- search forward/backward in time, if near is not within a cooldown.
+      all_between -- find all cooldowns between a dates specified as a pair of datetime objects, or a pair of strings in the "YY-MM-DD" format.
       '''
+
+      if all_between != None:
+        logging.warn('Finding the cooldowns is quite slow. You can follow the progress from the INFO level log messages. Consider caching the results with, e.g., "all_cd = bflog.find_cooldown(all_between=[\'15-05-01\', \'15-06-25\']); import pickle" and then "with open(\'all_cooldowns.pickled\', \'w\') as f: pickle.dump(all_cd, f)". ')
+        # Find the latest one
+        all_cooldowns = [ self.find_cooldown(near=all_between[1]) ]
+
+        # Find all the ones before
+        until = self.__parse_datestr(all_between[0])
+        while True:
+          c = all_cooldowns[-1]
+          logging.info('Found a cooldown from %s to %s' % (c[0].strftime('%Y-%m-%d'), c[1].strftime('%m-%d')))
+          if c[0] < until: break
+          try:
+            all_cooldowns.append( self.find_cooldown(near=c[0]) )
+          except:
+            logging.exception('Could not find any more cooldowns.')
+            break
+
+        all_cooldowns.reverse()
+        return all_cooldowns
+        
 
       flow_threshold = 0.05
       p1_threshold = 900.
@@ -368,8 +390,6 @@ class bluefors_log_reader(Instrument):
       # convert input to a datetime object
       if near == None:
         t = datetime.datetime.now(tz.tzlocal()) - datetime.timedelta(0,120)
-      elif isinstance(near, datetime.datetime):
-        t = near
       else:
         parsed = self.__parse_datestr(near)
         if parsed != None:
@@ -711,6 +731,7 @@ class bluefors_log_reader(Instrument):
     def __parse_datestr(self, datestr):
       ''' Parse a date given in the "YY-MM-DD" format, i.e.,
           the same format as the folder naming for the BlueFors log files. '''
+      if isinstance(datestr, datetime.datetime): return datestr # already a datetime object
       m = re.match(r'(\d\d)-(\d\d)-(\d\d)', datestr)
       if m == None: return None
       assert len(m.groups()) == 3
