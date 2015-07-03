@@ -66,6 +66,12 @@ class Agilent_V750(Instrument):
     self.add_parameter('low_speed_mode',
       flags=Instrument.FLAG_GET,
       type=types.BooleanType)
+    self.add_parameter('soft_start',
+      flags=Instrument.FLAG_GET,
+      type=types.BooleanType)
+    self.add_parameter('frequency_readable_after_stop',
+      flags=Instrument.FLAG_GET,
+      type=types.BooleanType)
     self.add_parameter('vent_valve_open',
       flags=Instrument.FLAG_GET,
       type=types.BooleanType)
@@ -119,6 +125,14 @@ class Agilent_V750(Instrument):
       flags=Instrument.FLAG_GET,
       type=types.FloatType,
       units='W', format='%.1f')
+    self.add_parameter('voltage',
+      flags=Instrument.FLAG_GET,
+      type=types.FloatType,
+      units='V', format='%.1f')
+    self.add_parameter('current',
+      flags=Instrument.FLAG_GET,
+      type=types.FloatType,
+      units='mA', format='%.1f')
 
     self.add_parameter('temperature_controller',
       flags=Instrument.FLAG_GET,
@@ -219,11 +233,15 @@ class Agilent_V750(Instrument):
     self.get_water_cooling()
     self.get_gas_load_type()
     self.get_low_speed_mode()
+    self.get_soft_start()
+    self.get_frequency_readable_after_stop()
     self.get_speed_target_low()
     self.get_speed_target_high()
     self.get_vent_valve_open()
     self.get_frequency()
     self.get_power()
+    self.get_voltage()
+    self.get_current()
     self.get_temperature_controller()
     self.get_temperature_bearing()
     self.get_temperature_body()
@@ -272,11 +290,15 @@ class Agilent_V750(Instrument):
         'water_cooling': (106, 'L'),
         'gas_load_type': (157, 'L'),
         'low_speed_mode': (001, 'L'),
+        'soft_start': (100, 'L'),
         'speed_target_low': (117, 'N'),
         'speed_target_high': (120, 'N'),
         'vent_valve_open': (122, 'L'),
+        'current': (200, 'N'),
+        'voltage': (201, 'N'),
         'power': (202, 'N'),
         'frequency': (232, 'N'),
+        'frequency_readable_after_stop': (167, 'L'),
         'temperature_bearing': (204, 'N'),
         'status': (205, 'N'),
         'error_code': (206, 'N'),
@@ -342,10 +364,14 @@ class Agilent_V750(Instrument):
   def do_get_water_cooling(self): return self.__read_value('water_cooling')
   def do_get_gas_load_type(self): return self.__read_value('gas_load_type')
   def do_get_low_speed_mode(self): return self.__read_value('low_speed_mode')
+  def do_get_soft_start(self): return self.__read_value('soft_start')
+  def do_get_frequency_readable_after_stop(self): return self.__read_value('frequency_readable_after_stop')
   def do_get_speed_target_low(self): return self.__read_value('speed_target_low')
   def do_get_speed_target_high(self): return self.__read_value('speed_target_high')
   def do_get_vent_valve_open(self): return self.__read_value('vent_valve_open')
   def do_get_frequency(self): return self.__read_value('frequency', log=True)
+  def do_get_current(self): return self.__read_value('current', log=True)
+  def do_get_voltage(self): return self.__read_value('voltage', log=True)
   def do_get_power(self): return self.__read_value('power', log=True)
   def do_get_hours_of_operation(self): return self.__read_value('hours_of_operation', log=True)
   def do_get_status(self): return self.__read_value('status', log=True)
