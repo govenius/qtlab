@@ -82,6 +82,7 @@ class bluefors_log_reader(Instrument):
                                          ('turbo temperature_body', 'C'),
                                          ('turbo temperature_bearing', 'C'),
                                          ('turbo temperature_controller', 'C'),
+                                         ('turbo error_code', ''),
                                          ('compressor oil_temperature', 'C'),
                                          ('compressor helium_temperature', 'C'),
                                          ('compressor water_in_temperature', 'C'),
