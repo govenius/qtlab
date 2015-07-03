@@ -60,6 +60,9 @@ class Agilent_V750(Instrument):
     self.add_parameter('on',
       flags=Instrument.FLAG_GET,
       type=types.BooleanType)
+    self.add_parameter('active_stop',
+      flags=Instrument.FLAG_GET,
+      type=types.BooleanType)
     self.add_parameter('water_cooling',
       flags=Instrument.FLAG_GET,
       type=types.BooleanType)
@@ -76,6 +79,11 @@ class Agilent_V750(Instrument):
       flags=Instrument.FLAG_GET,
       type=types.BooleanType)
     
+    self.add_parameter('remote_configuration',
+      flags=Instrument.FLAG_GET,
+      type=types.IntType,
+      format_map={0: 'remote',
+                  1: 'serial'})
     self.add_parameter('error_code',
       flags=Instrument.FLAG_GET,
       type=types.IntType,
@@ -234,6 +242,8 @@ class Agilent_V750(Instrument):
 
   def get_all(self):
     self.get_on()
+    self.get_remote_configuration()
+    self.get_active_stop()
     self.get_hours_of_operation()
     self.get_error_code()
     self.get_status()
@@ -297,10 +307,12 @@ class Agilent_V750(Instrument):
     window_datatype = {
         'firmware_program_listing': (406, 'A'),
         'firmware_parameter_listing': (407, 'A'),
-        'on': (000, 'L'),
+        'remote_configuration': (8, 'A'), # <-- this seems to be a mistake in the firmware (should be L according to manual).
+        'on': (0, 'L'),
+        'active_stop': (107, 'L'),
         'water_cooling': (106, 'L'),
         'gas_load_type': (157, 'L'),
-        'low_speed_mode': (001, 'L'),
+        'low_speed_mode': (1, 'L'),
         'soft_start': (100, 'L'),
         'speed_target_low': (117, 'N'),
         'speed_target_high': (120, 'N'),
@@ -362,6 +374,10 @@ class Agilent_V750(Instrument):
       rval = float(rval)
     elif window_datatype[value][1] == 'A':
       rval = rval
+      if value == 'remote_configuration': # Compensate for the firmware bug. (This should be 'L' type.)
+        if   rval.strip() == '0': rval = 0
+        elif rval.strip() == '1': rval = 1
+        else: logging.warn('Uknown response to "remote_configuration" (WIN 008): "%s"', rval)
     else:
       assert False, 'Invalid datatype: %s' % window_datatype[value][1]
 
@@ -371,7 +387,9 @@ class Agilent_V750(Instrument):
 
     return rval
 
+  def do_get_remote_configuration(self): return self.__read_value('remote_configuration')
   def do_get_on(self): return self.__read_value('on')
+  def do_get_active_stop(self): return self.__read_value('active_stop')
   def do_get_water_cooling(self): return self.__read_value('water_cooling')
   def do_get_gas_load_type(self): return self.__read_value('gas_load_type')
   def do_get_low_speed_mode(self): return self.__read_value('low_speed_mode')
