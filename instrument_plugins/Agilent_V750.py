@@ -84,10 +84,8 @@ class Agilent_V750(Instrument):
       type=types.IntType,
       format_map={0: 'remote',
                   1: 'serial'})
-    self.add_parameter('error_code',
-      flags=Instrument.FLAG_GET,
-      type=types.IntType,
-      format_map={0: 'no error',
+
+    error_codes ={0: 'no error',
                   1: 'no connection',
                   2: 'pump overtemp.',
                   4: 'controller overtemp.',
@@ -95,7 +93,17 @@ class Agilent_V750(Instrument):
                   16: 'output fail',
                   32: 'overvoltage',
                   64: 'short circuit',
-                  128: 'too high load'})
+                  128: 'too high load'}
+    all_error_combinations = dict(
+        (error, ', '.join( error_codes[2**j] for j in range(0,8) if ((error>>j)&1) ))
+        for error in range(1, 2**8)
+      )
+    all_error_combinations[0] = error_codes[0]
+    self.add_parameter('error_code',
+      flags=Instrument.FLAG_GET,
+      type=types.IntType,
+      format_map=all_error_combinations)
+
     self.add_parameter('status',
       flags=Instrument.FLAG_GET,
       type=types.IntType,
