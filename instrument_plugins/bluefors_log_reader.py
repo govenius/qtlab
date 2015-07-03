@@ -196,7 +196,6 @@ class bluefors_log_reader(Instrument):
         Gets the boolean channel values at time t.
 
         Input:
-            channel -- channel no.
             t -- datetime object or a pair of them.
                  If a pair, all recorded points between are returned.
 
@@ -551,7 +550,7 @@ class bluefors_log_reader(Instrument):
 
       quantities_to_plot = []
 
-      if heatswitches:
+      if heatswitches or turbo:
         booleans = self.get_boolean_channels(ends)
         if booleans != None:
           def bool_channel_as_vector_of_tuples(ch_name, offset=0):
@@ -564,6 +563,7 @@ class bluefors_log_reader(Instrument):
             vals = np.array([ vals[:], vals[:] ]).T.reshape((-1))[:-1]
             return np.array([times, vals]).T
 
+      if heatswitches:
           quantities_to_plot.append( ('hs-still', bool_channel_as_vector_of_tuples('hs-still',0.1), 0, 5 ) )
           quantities_to_plot.append( ('hs-mc', bool_channel_as_vector_of_tuples('hs-mc',0.15), 1, 5 ) )
 
@@ -594,6 +594,9 @@ class bluefors_log_reader(Instrument):
       if turbo: prefixes.append('turbo ')
       if compressor: prefixes.append('compressor ')
       for prefix in prefixes:
+
+        if prefix == 'turbo ':
+          quantities_to_plot.append( ('turbo ctrl panel switch', bool_channel_as_vector_of_tuples('turbo1',0.2), 2, 5 ) )
 
         for paramno, param_and_units in enumerate(self._params_in_common_format):
             param, units = param_and_units
