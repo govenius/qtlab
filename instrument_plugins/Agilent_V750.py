@@ -82,8 +82,8 @@ class Agilent_V750(Instrument):
     self.add_parameter('remote_configuration',
       flags=Instrument.FLAG_GET,
       type=types.IntType,
-      format_map={0: 'remote',
-                  1: 'serial'})
+      format_map={0: 'serial',
+                  1: 'remote'})
 
     error_codes ={0: 'no error',
                   1: 'no connection',
