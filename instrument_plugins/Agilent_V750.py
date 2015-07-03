@@ -109,6 +109,13 @@ class Agilent_V750(Instrument):
       type=types.FloatType,
       units='h', format='%.1f')
 
+    self.add_parameter('firmware_program_listing',
+      flags=Instrument.FLAG_GET,
+      type=types.StringType)
+    self.add_parameter('firmware_parameter_listing',
+      flags=Instrument.FLAG_GET,
+      type=types.StringType)
+
     self.add_parameter('speed_target_low',
       flags=Instrument.FLAG_GET,
       type=types.FloatType,
@@ -234,6 +241,8 @@ class Agilent_V750(Instrument):
     self.get_gas_load_type()
     self.get_low_speed_mode()
     self.get_soft_start()
+    self.get_firmware_program_listing()
+    self.get_firmware_parameter_listing()
     self.get_frequency_readable_after_stop()
     self.get_speed_target_low()
     self.get_speed_target_high()
@@ -286,6 +295,8 @@ class Agilent_V750(Instrument):
   def __read_value(self, value, log=False):
     # possible data types: 'L' == logic/boolean, 'N' == numeric, 'A' == alphanumeric
     window_datatype = {
+        'firmware_program_listing': (406, 'A'),
+        'firmware_parameter_listing': (407, 'A'),
         'on': (000, 'L'),
         'water_cooling': (106, 'L'),
         'gas_load_type': (157, 'L'),
@@ -379,6 +390,8 @@ class Agilent_V750(Instrument):
   def do_get_temperature_controller(self): return  self.__read_value('temperature_controller', log=True)
   def do_get_temperature_body(self): return  self.__read_value('temperature_body', log=True)
   def do_get_temperature_bearing(self): return self.__read_value('temperature_bearing', log=True)
+  def do_get_firmware_program_listing(self): return self.__read_value('firmware_program_listing')
+  def do_get_firmware_parameter_listing(self): return self.__read_value('firmware_parameter_listing')
 
   def do_get_pressure_gauge1(self):
     try: return self.__read_value('pressure_gauge1', log=True)
