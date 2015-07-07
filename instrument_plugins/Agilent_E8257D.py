@@ -239,7 +239,7 @@ class Agilent_E8257D(Instrument):
             Output a warning if rounded value is not equal to x. '''
         rounded = ('%.{0}e'.format(significant_figures-1)) % ( np.round(x, decimals=decimals) )
         if np.abs(float(rounded) - x) > np.finfo(np.float).tiny:
-          logging.warn('Rounding the requested value (%.20e) to %.20e (i.e. by %.20e).' % (x, rounded, float(x) - x))
+          logging.warn('Rounding the requested value (%.20e) to %s (i.e. by %.20e).' % (x, rounded, x - float(rounded)))
         return rounded
 
     def do_get_idn(self):
