@@ -558,9 +558,11 @@ class bluefors_log_reader(Instrument):
             vals = np.array([ offset + b[1][ch_name] for b in booleans ])
 
             # duplicate the points so that we get horizontal and vertical lines in line plots
-            times = np.array([ times[:-1], times[1:] ]).T.reshape((-1))
-            times = np.append(times, [ times[-1] ])
-            vals = np.array([ vals[:], vals[:] ]).T.reshape((-1))[:-1]
+            if len(times) > 1:
+              times = np.array([ times[:-1], times[1:] ]).T.reshape((-1))
+              times = np.append(times, [ times[-1] ])
+              vals = np.array([ vals[:], vals[:] ]).T.reshape((-1))[:-1]
+
             return np.array([times, vals]).T
 
       if heatswitches:
