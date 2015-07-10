@@ -506,7 +506,7 @@ class bluefors_log_reader(Instrument):
 
     def plot(self, start=None, end=None, time_since_start_of_day=False,
              flow=False, temperatures=True, resistances=False, pressures=False,
-             turbo=False, compressor=False, heatswitches=False):
+             turbo=False, compressor=False, heatswitches=False, condensing_compressor=False):
       '''
       Plot statistics for the time range (start, end), specified as datetime objects,
       or alternatively, as strings in the "YY-MM-DD" format.
@@ -550,7 +550,7 @@ class bluefors_log_reader(Instrument):
 
       quantities_to_plot = []
 
-      if heatswitches or turbo:
+      if heatswitches or turbo or condensing_compressor:
         booleans = self.get_boolean_channels(ends)
         if booleans != None:
           def bool_channel_as_vector_of_tuples(ch_name, offset=0):
@@ -568,6 +568,9 @@ class bluefors_log_reader(Instrument):
       if heatswitches:
           quantities_to_plot.append( ('hs-still', bool_channel_as_vector_of_tuples('hs-still',0.1), 0, 5 ) )
           quantities_to_plot.append( ('hs-mc', bool_channel_as_vector_of_tuples('hs-mc',0.15), 1, 5 ) )
+
+      if condensing_compressor:
+          quantities_to_plot.append( ('cond. compressor', bool_channel_as_vector_of_tuples('compressor',0.2), 0, 5 ) )
 
       if flow:
         q = self.get_flow(ends)
