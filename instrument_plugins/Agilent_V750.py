@@ -70,7 +70,7 @@ class Agilent_V750(Instrument):
       flags=Instrument.FLAG_GET,
       type=types.BooleanType)
     self.add_parameter('soft_start',
-      flags=Instrument.FLAG_GET,
+      flags=Instrument.FLAG_GETSET,
       type=types.BooleanType)
     self.add_parameter('frequency_readable_after_stop',
       flags=Instrument.FLAG_GET,
@@ -80,10 +80,11 @@ class Agilent_V750(Instrument):
       type=types.BooleanType)
     
     self.add_parameter('remote_configuration',
-      flags=Instrument.FLAG_GET,
+      flags=Instrument.FLAG_GETSET,
       type=types.IntType,
       format_map={0: 'serial',
-                  1: 'remote'})
+                  1: 'remote',
+                  2: 'front'}) # <-- According to the manual only 0 and 1 should be possible but that's not the case.
 
     error_codes ={0: 'no error',
                   1: 'no connection',
@@ -310,12 +311,16 @@ class Agilent_V750(Instrument):
     assert False, 'All attempts to communicate with the turbo failed.'
 
 
-  def __read_value(self, value, log=False):
+  def __read_value(self, value, log=False, write_instead=None):
+    '''
+    Read the specified value.
+    If write_instead != None, it will be written instead
+    '''
     # possible data types: 'L' == logic/boolean, 'N' == numeric, 'A' == alphanumeric
     window_datatype = {
         'firmware_program_listing': (406, 'A'),
         'firmware_parameter_listing': (407, 'A'),
-        'remote_configuration': (8, 'A'), # <-- this seems to be a mistake in the firmware (should be L according to manual).
+        'remote_configuration': (8, 'A'), # <-- According to manual this should be 'L', but in reality it returns 0 (serial), 1 (remote), or 2 (front).
         'on': (0, 'L'),
         'active_stop': (107, 'L'),
         'water_cooling': (106, 'L'),
@@ -345,16 +350,37 @@ class Agilent_V750(Instrument):
     addr = 0x80 # for (RS-232)
     window = "%03d" % (window_datatype[value][0])
     command = 0x30 # read operation
-    
+    data = write_instead
+    if data != None:
+      if   window_datatype[value][1] == 'L': data = '1' if data else '0'
+      elif window_datatype[value][1] == 'N': data = "%03d" % data
+      elif window_datatype[value][1] == 'A':
+        assert len(data) <= 10, 'Alphanumeric data for %s too long.' % value
+        data = '%10s' % data
+
     crc = (addr ^ ord(window[0]) ^ ord(window[1]) ^ ord(window[2]) ^ command ^ self._etx)
+    if data != None:
+      for b in data: crc ^= ord(b)
     crc = "%02X" % crc
     logging.debug('crc = 0x%s', crc)
     
-    msg = struct.pack('>BB3sBB2s',
+    if data == None:
+      msg = struct.pack('>BB3sBB2s',
                     stx, # start of transmission
                     addr,
                     window,
                     command,
+                    self._etx,
+                    crc # checksum
+                    )
+    else:
+      data_packing = {'L': '1s', 'N': '6s', 'A': '10s'}[window_datatype[value][1]]
+      msg = struct.pack('>BB3sB%sB2s' % data_packing,
+                    stx, # start of transmission
+                    addr,
+                    window,
+                    command,
+                    data,
                     self._etx,
                     crc # checksum
                     )
@@ -382,9 +408,10 @@ class Agilent_V750(Instrument):
       rval = float(rval)
     elif window_datatype[value][1] == 'A':
       rval = rval
-      if value == 'remote_configuration': # Compensate for the firmware bug. (This should be 'L' type.)
+      if value == 'remote_configuration': # Compensate for the firmware bug. (This should be 'N' or 'L' type.)
         if   rval.strip() == '0': rval = 0
         elif rval.strip() == '1': rval = 1
+        elif rval.strip() == '2': rval = 2
         else: logging.warn('Uknown response to "remote_configuration" (WIN 008): "%s"', rval)
     else:
       assert False, 'Invalid datatype: %s' % window_datatype[value][1]
@@ -396,12 +423,14 @@ class Agilent_V750(Instrument):
     return rval
 
   def do_get_remote_configuration(self): return self.__read_value('remote_configuration')
+  def do_set_remote_configuration(self, val): return self.__read_value('remote_configuration', write_instead=val)
   def do_get_on(self): return self.__read_value('on')
   def do_get_active_stop(self): return self.__read_value('active_stop')
   def do_get_water_cooling(self): return self.__read_value('water_cooling')
   def do_get_gas_load_type(self): return self.__read_value('gas_load_type')
   def do_get_low_speed_mode(self): return self.__read_value('low_speed_mode')
   def do_get_soft_start(self): return self.__read_value('soft_start')
+  def do_set_soft_start(self, val): return self.__read_value('soft_start', write_instead=val)
   def do_get_frequency_readable_after_stop(self): return self.__read_value('frequency_readable_after_stop')
   def do_get_speed_target_low(self): return self.__read_value('speed_target_low')
   def do_get_speed_target_high(self): return self.__read_value('speed_target_high')
