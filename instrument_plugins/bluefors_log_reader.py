@@ -357,15 +357,38 @@ class bluefors_log_reader(Instrument):
 
       get_vals = None
 
-      if channel.lower().startswith('oil temperature') or channel.lower() == 'toil':
+      if channel.lower() == 'tank pressure':
+        # get the tank pressure as measured by P4 during the mixture pump-out phase.
+        def get_vals(ends):
+          # find the last subinterval where scroll1 and V13 were both on
+          booleans = self.get_boolean_channels(ends)
+          times = np.array([ b[0] for b in booleans ])
+          vals = np.array([ b[1]['scroll1'] * b[1]['v13']  for b in booleans ])
+
+          last_on = None
+          prev_off = None
+          for t, v in reversed(np.array([times, vals]).T):
+            if last_on == None and v: last_on = t
+            if last_on != None:
+              if v: prev_off = t
+              else: break
+
+          if last_on == None or prev_off == None:
+            logging.warn('Could not find a subinterval in %s when both scroll1 and V13 are on. Perhaps the mixture was not pumped out normally?', ends)
+            return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
+
+          subinterval_start = prev_off + (last_on-prev_off)/2
+          return self.get_pressure(4, (subinterval_start, last_on))
+
+      elif channel.lower().startswith('oil temperature') or channel.lower() == 'toil':
           get_vals = self.get_compressor_oil_temperature
-      if channel.lower().startswith('water in temperature') or channel.lower() == 'twaterin':
+      elif channel.lower().startswith('water in temperature') or channel.lower() == 'twaterin':
           get_vals = self.get_compressor_water_in_temperature
-      if channel.lower().startswith('water out temperature') or channel.lower() == 'twaterout':
+      elif channel.lower().startswith('water out temperature') or channel.lower() == 'twaterout':
           get_vals = self.get_compressor_water_out_temperature
-      if channel.lower().startswith('p'):
+      elif channel.lower().startswith('p'):
           get_vals = lambda x, ch=int(channel[1:]): getattr(self, 'get_pressure')(ch, x)
-      if channel.lower().startswith('t'):
+      elif channel.lower().startswith('t'):
           get_vals = lambda x, ch=int(channel[1:]): getattr(self, 'get_temperature')(ch, x)
 
       assert get_vals != None, 'Unknown channel %s' % channel
@@ -506,7 +529,8 @@ class bluefors_log_reader(Instrument):
 
     def plot(self, start=None, end=None, time_since_start_of_day=False,
              flow=False, temperatures=True, resistances=False, pressures=False,
-             turbo=False, compressor=False, heatswitches=False, condensing_compressor=False):
+             turbo=False, compressor=False, heatswitches=False, condensing_compressor=False,
+             scrolls=False):
       '''
       Plot statistics for the time range (start, end), specified as datetime objects,
       or alternatively, as strings in the "YY-MM-DD" format.
@@ -550,7 +574,7 @@ class bluefors_log_reader(Instrument):
 
       quantities_to_plot = []
 
-      if heatswitches or turbo or condensing_compressor:
+      if heatswitches or turbo or condensing_compressor or scrolls:
         booleans = self.get_boolean_channels(ends)
         if booleans != None:
           def bool_channel_as_vector_of_tuples(ch_name, offset=0):
@@ -571,6 +595,10 @@ class bluefors_log_reader(Instrument):
 
       if condensing_compressor:
           quantities_to_plot.append( ('cond. compressor', bool_channel_as_vector_of_tuples('compressor',0.2), 0, 5 ) )
+
+      if scrolls:
+          quantities_to_plot.append( ('scroll1', bool_channel_as_vector_of_tuples('scroll1',0.05), 0, 5 ) )
+          quantities_to_plot.append( ('scroll2', bool_channel_as_vector_of_tuples('scroll2',0.125), 1, 5 ) )
 
       if flow:
         q = self.get_flow(ends)
