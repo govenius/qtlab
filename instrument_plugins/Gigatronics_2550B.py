@@ -175,7 +175,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set ALC source to %f' % val)
+        logging.debug(__name__ + ' : set ALC source to %s' % val)
         self._visainstrument.write('POW:ALC:SOUR %s' % val)
 
     def do_get_trigger_source(self):
@@ -205,7 +205,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set trigger source to %f' % val)
+        logging.debug(__name__ + ' : set trigger source to %s' % val)
         self._visainstrument.write('TRIG:SOUR %s' % val)
 
     def do_get_pulse_modulation(self):
@@ -232,7 +232,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set pulse modulation to %f' % val)
+        logging.debug(__name__ + ' : set pulse modulation to %s' % val)
         self._visainstrument.write('PULM:STAT %s' % str(int(val)))
 
     def do_get_pulse_modulation_inverted_polarity(self):
@@ -259,7 +259,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set  to %f' % val)
+        logging.debug(__name__ + ' : set  to %s' % val)
         self._visainstrument.write('PULM:EXT:POL %s' % ('INV' if val else 'NORM'))
 
     def do_get_pulse_modulation_source(self):
@@ -285,7 +285,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set  to %f' % val)
+        logging.debug(__name__ + ' : set  to %s' % val)
         self._visainstrument.write('PULM:SOUR %s' % val)
 
     def do_get_power_correction_offset(self):
