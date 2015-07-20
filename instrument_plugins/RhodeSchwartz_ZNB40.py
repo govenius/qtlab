@@ -171,8 +171,9 @@ class RhodeSchwartz_ZNB40(Instrument):
         self._visainstrument.write('INIT:IMM:ALL')
 
     def autoscale_once(self):
-        for chan in self.ch_catalog()[0::2]:
-           self._visainstrument.write('DISPlay:WINDow%u:TRAC%u:Y:SCALe:AUTO ONCE' % (int(chan),int(chan)))
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+           self._visainstrument.write('DISPlay:WINDow%u:TRAC%u:Y:SCALe:AUTO ONCE' % (chan,chan))
 
     def set_S21_only_channel_config(self):
         self._visainstrument.write('*RST')
@@ -207,34 +208,32 @@ class RhodeSchwartz_ZNB40(Instrument):
     def get_data(self, s_parameter):
         '''
         Get unformatted measured data from the current channel.
-        s_parameter --- must be on of ['S11', 'S21', 'S12', 'S22']
+        s_parameter --- must be one of ['S11', 'S21', 'S12', 'S22']
         '''
         s = s_parameter.upper().strip()
         assert s in ['S11', 'S21', 'S12', 'S22'], 'Invalid S-parameter: %s' % s_parameter
         logging.debug(__name__ + ' : Get trace data.')
         
         # assert that the channels are configured for the correct s-parameter measurements        
-        try: 
+        try:
             s2chan = self.s_to_channel_dict()[s_parameter]
         except KeyError:
             print '%s is not currently being measured.' % s_parameter
             raise
 
-        r = self._visainstrument.ask('SENSe%u:FUNCtion?' % float(s2chan))
+        r = self._visainstrument.ask('SENSe%u:FUNCtion?' % s2chan)
         assert r.strip().strip("'").upper().endswith(s), 'Channel configuration has been changed! (%s)' % r
 
         self._visainstrument.write('FORM REAL,32')
-        raw = self._visainstrument.ask('TRAC? CH%uDATA' % float(s2chan))
+        raw = self._visainstrument.ask('TRAC? CH%uDATA' % s2chan)
 
-        #float(self._s_to_channel[s_parameter]))
         return np.array([ r + 1j*i for r,i in self.__real32_byte_array_to_ndarray(raw).reshape((-1,2)) ])
 
     def channel_to_s_dict(self):
-        channel_numbers = self.ch_catalog()[0::2]
-        channel_names = self.ch_catalog()[1::2] 
+        channel_numbers, channel_names = self.ch_catalog()
         meas = []
         for chan in channel_numbers:
-            sparam = self._visainstrument.ask('SENSE%u:FUNCTION?' % int(chan)).strip().strip("'").upper().split(":")[2]
+            sparam = self._visainstrument.ask('SENSE%u:FUNCTION?' % chan).strip().strip("'").upper().split(":")[2]
             meas.append(sparam)
         return dict(zip(channel_numbers, meas))
 
@@ -255,14 +254,19 @@ class RhodeSchwartz_ZNB40(Instrument):
         r = self._visainstrument.ask('SENSe%u:FUNCtion?' % chan)        
         return r
 
-    def get_frequency_data(self):
+    def get_frequency_data(self, channel_number=None):
         '''
-        Get get the current x-axis frequency values.
+        Get the current x-axis frequency values.
+
+        If channel_number == None, use the first channel in the channel catalog.
         '''
         logging.debug(__name__ + 'Get the current x-axis values.')
-        
+
+        ch = self.ch_catalog()[0][0] if channel_number == None else channel_number
+        assert int(ch) == ch, 'channel_number must be an integer'
+
         self._visainstrument.write('FORM REAL,32')
-        raw = self._visainstrument.ask('TRAC:STIM? CH1DATA')
+        raw = self._visainstrument.ask('TRAC:STIM? CH%dDATA' % ch)
         return self.__real32_byte_array_to_ndarray(raw)
 
 #       return eval('[' + self._visainstrument.ask('TRAC:STIM? CH1DATA') + ']')    
@@ -334,7 +338,10 @@ class RhodeSchwartz_ZNB40(Instrument):
     
     def ch_catalog(self):
         logging.debug('return numbers and names of all channels')
-        return self._visainstrument.ask('CONFIGURE:CHANNEL:CATALOG?').strip().strip("'").upper().split(",")
+        catalog = self._visainstrument.ask('CONFIGURE:CHANNEL:CATALOG?').strip().strip("'").upper().split(",")
+        ch_names = catalog[1::2]
+        ch_numbers = map(int, catalog[0::2])
+        return ch_numbers, ch_names
 
     def trace_catalog(self):
         logging.debug('return numbers and names of all channels')
@@ -358,10 +365,10 @@ class RhodeSchwartz_ZNB40(Instrument):
         Note that video BW is automatically kept at 3x reolution BW
         It can be change manually on the FSL or using 'BAND:VID %sHz'
         '''
-        num_channels = len(self.ch_catalog())/2
         logging.debug('Setting Resolution BW to %s' % if_bandwidth)
+        ch_numbers, ch_names = self.ch_catalog()
         if np.abs(if_bandwidth - 26e3) > 1:
-            for chan in range(1,num_channels+1):
+            for chan in ch_numbers:
                 self._visainstrument.write('SENSE%s:BWIDTH:RESOLUTION %s' % (chan,if_bandwidth))
         else:
           self._visainstrument.write('BAND MAX')
@@ -419,7 +426,7 @@ class RhodeSchwartz_ZNB40(Instrument):
     
     def do_get_sweep_mode(self):
         logging.debug('Getting sweep mode.')
-        return 'cont' if bool(int(self._visainstrument.ask('INIT:CONT?'))) else 'single'
+        return 'cont' if self._visainstrument.ask('INIT:CONT?').strip().lower() in ['1'] else 'single'
 
     def do_set_sweep_mode(self, val):
         logging.debug('Setting sweep mode: %s' % val)
