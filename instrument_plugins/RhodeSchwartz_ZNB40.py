@@ -66,22 +66,22 @@ class RhodeSchwartz_ZNB40(Instrument):
 
         self.add_parameter('start_frequency', type=types.FloatType, format='%.6e',
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                           units=self._freq_unit_symbol, minval=20e3/self._freq_unit, maxval=8e9/self._freq_unit)
+                           units=self._freq_unit_symbol, minval=20e3/self._freq_unit, maxval=40e9/self._freq_unit)
         self.add_parameter('stop_frequency', type=types.FloatType, format='%.6e',
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                           units=self._freq_unit_symbol, minval=20e3/self._freq_unit, maxval=8e9/self._freq_unit)
+                           units=self._freq_unit_symbol, minval=20e3/self._freq_unit, maxval=40e9/self._freq_unit)
 
         self.add_parameter('center_frequency', type=types.FloatType, format='%.06e',
                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                          units=self._freq_unit_symbol, minval=0.020, maxval=8000)
+                           units=self._freq_unit_symbol, minval=0.020, maxval=40e9)
 
         self.add_parameter('span_frequency', type=types.FloatType, format='%.06e',
                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                          units=self._freq_unit_symbol, minval=0.020, maxval=8000)
+                          units=self._freq_unit_symbol, minval=0.020)
 
         self.add_parameter('numpoints', type=types.IntType, format='%g',
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                           units='', minval=0, maxval=501)
+                           units='', minval=1)
         self.add_parameter('averages', type=types.IntType, format='%g',
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
                            units='',minval=0, maxval=32767)
@@ -93,10 +93,11 @@ class RhodeSchwartz_ZNB40(Instrument):
                            units='s')
         self.add_parameter('sweeptime_auto', type=types.BooleanType,
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET)
+
         self.add_parameter('source_power', type=types.FloatType,
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                           units='dBm')
-                           
+                           units='dBm',minval=-30., maxval=8.)
+
         self.add_parameter('trigger_source', type=types.StringType,
                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
                           format_map = {
