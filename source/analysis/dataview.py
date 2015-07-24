@@ -332,7 +332,12 @@ class DataView():
         old_dims = self._virtual_dims
         self._virtual_dims = {}
         for name, dim in old_dims.iteritems():
-          self._virtual_dims[name] = { 'fn': dim['fn'], 'cached_array': (None if dim['cached_array']==None else dim['cached_array'][~(self._mask)]) }
+          cached_arr = dim['cached_array']
+          if isinstance(cached_arr, np.ndarray):
+            cached_arr = cached_arr[~(self._mask)]
+          elif cached_arr != None:
+            cached_arr = [ val for i,val in enumerate(cached_arr) if not self._mask[i] ]
+          self._virtual_dims[name] = { 'fn': dim['fn'], 'cached_array': cached_arr }
 
         # finally remove the obsolete mask
         self._mask = np.zeros(len(self._data), dtype=np.bool)
