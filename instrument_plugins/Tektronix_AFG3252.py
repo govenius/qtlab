@@ -106,7 +106,7 @@ class Tektronix_AFG3252(Instrument):
 
         self.add_parameter('phase', format='%.09e', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
-            channels=(1, 2), minval=0, maxval=6.283, units='rad', channel_prefix='ch%d_')
+            channels=(1, 2), minval=-np.pi, maxval=np.pi, units='rad', channel_prefix='ch%d_')
 
         self.add_parameter('shape', type=types.StringType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
@@ -319,8 +319,8 @@ class Tektronix_AFG3252(Instrument):
             None
         '''
         logging.debug(__name__ + ' : Set phase of channel %s to %.6e rad.'
-            % (channel, amp))
-        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6e' % (channel, amp))
+                      % (channel, phase))
+        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6e' % (channel, phase))
 
 
 
