@@ -137,6 +137,29 @@ class Tektronix_AFG3252(Instrument):
         self.add_parameter('polarity', type=types.StringType, flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET, channels=(1, 2),channel_prefix='ch%d_', format_map={"INV" : "inverted","NORM" : "normal"}
 )
 
+        self.add_parameter('burst_enabled', type=types.BooleanType, channels=(1, 2),channel_prefix='ch%d_',
+            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
+
+        self.add_parameter('burst_mode', type=types.StringType, channels=(1, 2),channel_prefix='ch%d_',
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+                           format_map={"TRIG" : "triggered", "GAT" : "gated"})
+
+        self.add_parameter('burst_ncycles', type=types.IntType, channels=(1, 2),channel_prefix='ch%d_',
+                           minval=0,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
+
+        self.add_parameter('burst_delay', type=types.FloatType, channels=(1, 2),channel_prefix='ch%d_',
+                           minval=0, maxval=85.,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
+
+        self.add_parameter('trigger_source', type=types.StringType,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+                           format_map={"TIM" : "internal timer", "EXT" : "external"})
+
+        self.add_parameter('trigger_slope', type=types.StringType,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+                           format_map={"POS" : "positive", "NEG" : "negative"})
+
         # Add functions
         self.add_function('reset')
         self.add_function('get_all')
@@ -183,6 +206,8 @@ class Tektronix_AFG3252(Instrument):
 
         self.get_ref_clock_mode()
         self.get_frequencies_force_equal()
+        self.get_trigger_source()
+        self.get_trigger_slope()
 
         for i in range(1,3):
             self.get('ch%d_amplitude' % i)
@@ -197,6 +222,10 @@ class Tektronix_AFG3252(Instrument):
             self.get('ch%d_polarity' % i)
             self.get('ch%d_load_impedance' % i)
             self.get('ch%d_phase' % i)
+            self.get('ch%d_burst_enabled' % i)
+            self.get('ch%d_burst_mode' % i)
+            self.get('ch%d_burst_ncycles' % i)
+            self.get('ch%d_burst_delay' % i)
 
     def clear_waveforms(self):
         '''
@@ -714,6 +743,97 @@ class Tektronix_AFG3252(Instrument):
             self._visainstrument.write('OUTP%s:POL NORM' % channel)
         if (state == 'INV'):
             self._visainstrument.write('OUTP%s:POL INV' % channel)
+
+    def do_set_burst_enabled(self, val, channel):
+        '''
+        Whether the burst mode is enabled at all.
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst enabled to %s', channel, val)
+        self._visainstrument.write('SOUR%s:BURS:STAT %s' % (channel, 'ON' if val else 'OFF'))
+
+    def do_get_burst_enabled(self, channel):
+        '''
+        Whether the burst mode is enabled at all.
+        '''
+        logging.debug(__name__ + ' : Get channel %s ', channel)
+        return self._visainstrument.ask('SOUR%s:BURS:STAT?' % channel).strip().upper() in ['1', 'ON']
+
+    def do_set_burst_mode(self, val, channel):
+        '''
+        Whether to trigger or gate the output.
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst mode to %s', channel, val)
+        self._visainstrument.write('SOUR%s:BURS:MODE %s' % (channel,
+                                                            {'tri': 'TRIG', 'gat': 'GAT'}[val.lower()[:3]]))
+
+    def do_get_burst_mode(self, channel):
+        '''
+        Whether to trigger or gate the output.
+        '''
+        logging.debug(__name__ + ' : Get channel %s burst mode', channel)
+        return self._visainstrument.ask('SOUR%s:BURS:MODE?' % channel).strip().upper()
+
+    def do_set_burst_ncycles(self, val, channel):
+        '''
+        The the number of cycles for the burst mode.
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst cycles to %s', channel, val)
+        self._visainstrument.write('SOUR%s:BURS:NCYC %s' % (channel, val))
+
+    def do_get_burst_ncycles(self, channel):
+        '''
+        The the number of cycles for the burst mode.
+        '''
+        logging.debug(__name__ + ' : Get channel %s burst cycles', channel)
+        return int(float(self._visainstrument.ask('SOUR%s:BURS:NCYC?' % channel)))
+
+    def do_set_burst_delay(self, val, channel):
+        '''
+        Time delay for the burst mode
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst delay to %s', channel, val)
+
+        # from the manual: resolution is 100 ps or 12 digits
+        rounded = '%.4e' % np.round(val, decimals=10)
+        if np.abs(float(rounded) - val) > np.finfo(np.float).tiny:
+          logging.warn('Rounding the requested value (%.15e s) to %s s (i.e. by %.6e s).' % (val, rounded, float(rounded) - val))
+
+        self._visainstrument.write('SOUR%s:BURS:TDEL %s' % (channel, rounded))
+
+    def do_get_burst_delay(self, channel):
+        '''
+        Time delay for the burst mode
+        '''
+        logging.debug(__name__ + ' : Get channel %s burst delay', channel)
+        return self._visainstrument.ask('SOUR%s:BURS:TDEL?' % channel)
+
+    def do_set_trigger_source(self, val):
+        '''
+        Whether to trigger from an external source or an internal times.
+        '''
+        logging.debug(__name__ + ' : Set trigger source to %s', val)
+        self._visainstrument.write('TRIG:SOUR %s' % ({'int': 'INT', 'ext': 'EXT'}[val.lower()[:3]]))
+
+    def do_get_trigger_source(self):
+        '''
+        Whether to trigger from an external source or an internal times.
+        '''
+        logging.debug(__name__ + ' : Get the trigger source')
+        return self._visainstrument.ask('TRIG:SOUR?').strip().upper()
+
+    def do_set_trigger_slope(self, val):
+        '''
+        Trigger on positive or negative edge.
+        '''
+        logging.debug(__name__ + ' : Set trigger slope to %s', val)
+        self._visainstrument.write('TRIG:SLOP %s' % ({'pos': 'POS', 'neg': 'NEG'}[val.lower()[:3]]))
+
+    def do_get_trigger_slope(self):
+        '''
+        Trigger on positive or negative edge.
+        '''
+        logging.debug(__name__ + ' : Get the trigger slope')
+        return self._visainstrument.ask('TRIG:SLOP?').strip().upper()
 
 # self._visainstrument.write('OUTP%s:POL %s' % (channel, polarity))
 
