@@ -327,13 +327,25 @@ class PXI_scope(Instrument):
             ftp = self._get_connection()
 
             assert(ftp.pwd().strip() == '/data/')
+            arm_signal_dir = '../signals'
+            arm_signal_name = 'arm.signal'
+            arm_signal_path = arm_signal_dir + '/' + arm_signal_name
+
+            # First of all check whether the arm signal already exists.
+            # If so, the PXI is probably busy digitizing the previous trace.
+            # --> This is not a good sign (maybe no triggers are not received)
+            #     but the best we can do is to just delete the old one.
+            for s in ftp.nlst(arm_signal_dir):
+              if s.strip().lower() == arm_signal_name.lower():
+                logging.warn('The arm signal (%s) already exists. Deleting the old one.', arm_signal_path)
+                try: ftp.delete(arm_signal_path)
+                except: logging.exception('Could not delete the old arm signal.')
 
             # Create a file which the PXI takes as a signal to arm
             buffer = StringIO.StringIO()
             self._armed_trace_name = '%x_%x.tdms' % (1e3*time.time(), 1e9 * random.random())
             buffer.write( self._armed_trace_name )
             buffer.seek(0)
-            arm_signal_path = '../signals/arm.signal'
             ftp.storbinary('STOR %s_' % arm_signal_path, buffer) # write to a temp file first
             buffer.close()
 
