@@ -904,7 +904,7 @@ class Instrument(SharedGObject):
             return None
 
         if not p['flags'] & Instrument.FLAG_SET:
-            logging.warn('Instrument does not support setting of %s' % name)
+            logging.warn('(%s) Instrument does not support setting of %s', self.get_name(), name)
             return None
 
         if 'channel' in p and 'channel' not in kwargs:
@@ -914,8 +914,8 @@ class Instrument(SharedGObject):
         if 'format_map' in p:
             newval = self._val_from_option_dict(p['format_map'], value)
             if newval is None:
-                logging.error('Value %s is not a valid option for "%s", valid options: %r',
-                    value, name, repr(p['format_map']))
+                logging.error('(%s) Value %s is not a valid option for "%s", valid options: %r',
+                    self.get_name(), value, name, repr(p['format_map']))
                 return
             value = newval
 
@@ -923,8 +923,8 @@ class Instrument(SharedGObject):
         if 'option_list' in p:
             newval = self._val_from_option_list(p['option_list'], value)
             if newval is None:
-                logging.error('Value %s is not a valid option for "%s", valid: %r',
-                    value, name, repr(p['option_list']))
+                logging.error('(%s) Value %s is not a valid option for "%s", valid: %r',
+                    self.get_name(), value, name, repr(p['option_list']))
                 return
             value = newval
 
@@ -935,11 +935,11 @@ class Instrument(SharedGObject):
                 return None
 
         if 'minval' in p and value < p['minval']:
-            logging.warn('Trying to set "%s" too small: %s' % (name, value))
+            logging.warn('(%s) Trying to set "%s" too small: %s', self.get_name(), name, value)
             return None
 
         if 'maxval' in p and value > p['maxval']:
-            logging.warn('Trying to set "%s" too large: %s' % (name, value))
+            logging.warn('(%s) Trying to set "%s" too large: %s', self.get_name(), name, value)
             return None
 
         if 'base_name' in p:
@@ -951,7 +951,7 @@ class Instrument(SharedGObject):
         if 'maxstep' in p and p['maxstep'] is not None:
             curval = p['value']
             if curval is None:
-                logging.warning('Current "%s" value not available, ignoring maxstep', name)
+                logging.warning('(%s) Current "%s" value not available, ignoring maxstep', self.get_name(), name)
                 curval = value + 0.01 * p['maxstep']
 
             delta = curval - value
