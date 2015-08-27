@@ -426,7 +426,7 @@ class PXI_scope(Instrument):
               most_recent_trace = self._get_most_recent_trace_name_from_device()
               logging.debug('most recent trace: %s (expecting %s)', most_recent_trace, self._armed_trace_name)
               
-              if most_recent_trace.strip().lower().endswith(self._armed_trace_name.strip().lower()):
+              if most_recent_trace and most_recent_trace.strip().lower().endswith(self._armed_trace_name.strip().lower()):
                 logging.debug('downloading trace: %s', most_recent_trace)
                 
                 # download the data to a local file
