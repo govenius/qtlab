@@ -388,7 +388,7 @@ class Lakeshore_370(Instrument):
         getattr(self, 'get_resistance%s' % ch)()
 
       except Exception as e:
-        logging.debug('Failed to auto-update temperature/resistance (attempt %d): %s' % (failed_attempts, str(e)))
+        logging.debug('Failed to auto-update temperature/resistance: %s' % (str(e)))
 
       return True # keep calling back
           
