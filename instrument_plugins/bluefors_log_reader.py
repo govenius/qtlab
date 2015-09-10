@@ -646,6 +646,11 @@ class bluefors_log_reader(Instrument):
           logging.warn('No %s data for the specified time period.', title)
           continue
         hours_since_beginning = np.array([ (t - ref_time).total_seconds() for t in pts[:,0] ]) / 3600.
+
+        # color=6 is bright yellow in the default gnuplot color scheme. Skip it.
+        try: color += 1 if color>5 else 0
+        except: pass # in case color is not an integer
+
         p.add_trace(hours_since_beginning, pts[:,1].astype(np.float),
                     points=True, lines=True,
                     color=color,
