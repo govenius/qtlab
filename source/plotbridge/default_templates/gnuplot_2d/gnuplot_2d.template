@@ -134,6 +134,10 @@ set output "output.tex"
 set key right bottom
 #set key above title "Legend" box 3
 
+{% if traces|selectattr("right")|list|length %}
+set ytics nomirror
+set y2tics
+{% endif %}
 
 {% if traces %}
 plot \
