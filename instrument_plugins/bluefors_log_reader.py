@@ -628,8 +628,9 @@ class bluefors_log_reader(Instrument):
       if compressor: prefixes.append('compressor ')
       for prefix in prefixes:
 
-        if prefix == 'turbo ' and booleans:
-          quantities_to_plot.append( ('turbo ctrl panel switch', bool_channel_as_vector_of_tuples('turbo1',0.2), 2, 5 ) )
+        if prefix == 'turbo ':
+          try: quantities_to_plot.append( ('turbo ctrl panel switch', bool_channel_as_vector_of_tuples('turbo1',0.2), 2, 5 ) )
+          except: logging.exception('Could not plot turbo control panel switch status.')
 
         for paramno, param_and_units in enumerate(self._params_in_common_format):
             param, units = param_and_units
