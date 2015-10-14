@@ -178,7 +178,7 @@ class PXI_scope(Instrument):
         logging.info(__name__ + ' : resetting instrument')
         self._average_power = 0
         self._points = 1024
-        self._ddc_per_clock_scaled = 768
+        self._ddc_per_clock_scaled = 36864 #768
         self._boxcar_power = 9
         self._int_trigger_period_in_clockcycles = 100
         self._ext_trigger = False
@@ -704,10 +704,10 @@ class PXI_scope(Instrument):
 <Name>Saved samples</Name>
 <Val>{{ points }}</Val>
 </U32>
-<I16>
+<U16>
 <Name>ddc freq per clock freq * 2**16</Name>
 <Val>{{ ddc_per_clock }}</Val>
-</I16>
+</U16>
 <U16>
 <Name>Triggers to average (as power of 2)</Name>
 <Val>{{ average_power }}</Val>
