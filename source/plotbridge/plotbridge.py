@@ -589,12 +589,12 @@ class Plot():
     assert skip == None or isinstance(skip, int), 'skip must be an int'
 
     if slowcoordinate == None and title != None and len(title) > 0:
-      # Attempt parsing the slow coordinate value for title, if none was specified.
+      # Attempt parsing the slow coordinate value from the trace title (if none was specified).
       m = re.findall(r'([e\d\.\+\-]+)', title)
       if len(m) == 1: # don't try to guess if multiple matches
         try:
           slowcoordinate = float(m[0])
-          logging.info('Assuming %f in "%s" is a "slow coordinate". It will be used in multidimensional plots.')
+          logging.info('Assuming %s in "%s" is a "slow coordinate". It will be used in multidimensional plots.', m[0], title)
         except:
           pass
 
