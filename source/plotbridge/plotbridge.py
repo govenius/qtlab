@@ -743,6 +743,11 @@ class Plot():
     try: complex_dtypes.append(np.complex256) # 64-bit systems only? (Or maybe a numpy version thing.)
     except AttributeError: pass
 
+    # convert python lists to numpy arrays
+    if not isinstance(x, np.ndarray): x = np.array(x)
+    if y != None and not isinstance(y, np.ndarray): y = np.array(y)
+    if yerr != None and not isinstance(yerr, np.ndarray): yerr = np.array(yerr)
+
     if len(x.shape) == 1:
 
       if x.dtype in complex_dtypes:
@@ -751,7 +756,7 @@ class Plot():
       else:
         assert y != None, 'y must be given if x is a real vector.'
         assert y.dtype not in complex_dtypes, 'y must be real if x is a real vector.'
-        assert x.shape == y.shape, "x and y vector lengths don't match."
+        assert x.shape == y.shape, "x and y vector lengths don't match [%s vs %s]." % (x.shape, y.shape)
         dd = np.array(( x / (1. if x_plot_units==None else x_plot_units), y / (1. if y_plot_units==None else y_plot_units) )).T
 
     elif len(x.shape) == 2:
