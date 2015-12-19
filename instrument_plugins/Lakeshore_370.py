@@ -130,7 +130,7 @@ class Lakeshore_370(Instrument):
             channels=self._channels)
 
         self.add_parameter('excitation_range',
-            flags=Instrument.FLAG_GET,
+            flags=Instrument.FLAG_GETSET,
             type=types.StringType,
             channels=self._channels,
             format_map={
@@ -472,6 +472,12 @@ class Lakeshore_370(Instrument):
     def do_get_excitation_range(self, channel):
         ans = self.__ask('RDGRNG? %s' % channel)
         return int(ans.split(',')[1])
+    def do_set_excitation_range(self, val, channel):
+        s = self.__ask('RDGRNG? %s' % channel)
+        s = s.split(',')
+        s[1] = str(val)
+        s = np.append([ str(channel) ], s)
+        self.__write('RDGRNG %s' % (','.join(s)))
         
     def do_get_autorange(self, channel):
         ans = self.__ask('RDGRNG? %s' % channel)
