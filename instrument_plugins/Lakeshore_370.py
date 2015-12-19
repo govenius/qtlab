@@ -340,8 +340,7 @@ class Lakeshore_370(Instrument):
           
 
     def __ask(self, msg):
-        attempt = 0
-        while True:
+        for attempt in range(5):
           try:
             m = self._visa.ask("%s" % msg).replace('\r','')
             qt.msleep(.01)
@@ -355,8 +354,7 @@ class Lakeshore_370(Instrument):
         return m
 
     def __write(self, msg):
-        attempt = 0
-        while True:
+        for attempt in range(5):
           try:
             self._visa.write("%s" % msg)
             qt.msleep(.5)
