@@ -183,7 +183,8 @@ class FlowControl(SharedGObject):
 
     def register_callback(self, time_msec, func, handle=None):
         '''
-        Register a function to be called every time_msec miliseconds.
+        Register a function to be called every time_msec miliseconds
+        until it returns False.
 
         <handle> is a name you can use to refer to it when removing the
         callback using 'remove_callback'. If you don't specify a specific
@@ -198,12 +199,12 @@ class FlowControl(SharedGObject):
         self._callbacks[handle] = hid
         return handle
 
-    def remove_callback(self, handle):
+    def remove_callback(self, handle, warn_if_nonexistent=True):
         '''
         Remove a callback that was created with 'register_callback'
         '''
         if handle not in self._callbacks:
-            logging.warning('Callback %s not found')
+            if warn_if_nonexistent: logging.warning('Callback %s not found', handle)
             return False
 
         gobject.source_remove(self._callbacks[handle])

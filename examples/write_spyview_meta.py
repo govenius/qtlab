@@ -25,8 +25,6 @@ data.add_value('Z')
 
 data.create_file()
 
-plot3d = qt.Plot3D(data, name='measure3D', coorddims=(0,1), valdim=2, style='image')
-
 for y in y_vec:
     for x in x_vec:
 

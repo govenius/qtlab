@@ -98,7 +98,7 @@ class TCPInstrument():
         return reply
 
     def read(self):
-        self.ask(None)
+        return self.ask(None)
 
     def write(self, cmd):
         self.__tcp_lock.acquire()

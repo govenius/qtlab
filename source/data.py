@@ -27,6 +27,8 @@ import logging
 import copy
 import shutil
 import pickle
+import sys
+import traceback
 
 from gettext import gettext as _L
 
@@ -204,6 +206,7 @@ class Data(SharedGObject):
     _META_STEPRE = re.compile('^#.*[ \t](\d+) steps', re.I)
     _META_COLRE = re.compile('^#.*Column ?(\d+)', re.I)
     _META_COMMENTRE = re.compile('^#(.*)', re.I)
+    _META_NEWLINE_IN_COMMENT = '#_' # replace \n in comments by this and vice versa when parsing
 
     _INT_TYPES = (
             types.IntType, types.LongType,
@@ -338,9 +341,9 @@ class Data(SharedGObject):
         as a dimension name.
         '''
         if isinstance(index, basestring):
-            return self._data[:,self.get_dimension_index(index)]
+            return self.get_data()[:,self.get_dimension_index(index)]
         else:
-            return self._data[index]
+            return self.get_data()[index]
 
     def __setitem__(self, index, val):
         self._data[index] = val
@@ -593,7 +596,7 @@ class Data(SharedGObject):
         '''Add comment to the Data object.'''
         self._comment.append([self.get_npoints(), comment])
         if self._file is not None:
-            self._file.write('# %s\n' % comment)
+            self._file.write('# %s\n' % comment.replace('\n', "\n%s" % (self._META_NEWLINE_IN_COMMENT)))
 
     def get_comment(self, include_row_numbers=False):
         '''Return the comment for the Data object.'''
@@ -601,12 +604,16 @@ class Data(SharedGObject):
 
 ### File writing
 
-    def create_file(self, name=None, filepath=None, settings_file=True, log_file=True, log_level=logging.INFO):
+    def create_file(self, name=None, filepath=None,
+                    settings_file=True,
+                    log_file=True, log_level=logging.INFO,
+                    script_file=True):
         '''
         Create a new data file and leave it open. In addition a
         settings file is generated, unless settings_file=False is
         specified. A copy of log messages generated during the measurement
-        will also be saved, unless log_file=False.
+        will also be saved, unless log_file=False. A copy of currently
+        running script files will be saved as well, unless script_file=False.
 
         This function should be called after adding the comment and the
         coordinate and value metadata, because it writes the file header.
@@ -635,6 +642,26 @@ class Data(SharedGObject):
 
         if log_file and in_qtlab:
             self._open_log_file()
+
+        if script_file and in_qtlab:
+            stack = traceback.extract_stack()
+            scripts_found = 0
+            for j in range(len(stack)):
+              # Go through the stack. If it seems like execfile was called from
+              # the scripts module, save the contents of the target file.
+              if ( stack[j][0].strip().endswith('scripts.py') and
+                   stack[j][-1].strip().startswith('execfile')):
+                try:
+                  script_path = stack[j+1][0]
+                  with open(script_path, 'r') as script_src:
+                    scripts_found += 1
+                    script_out_fname, ext = os.path.splitext(self.get_filepath())
+                    script_out_fname += '.script%s' % (scripts_found if scripts_found>1 else '')
+                    with open(script_out_fname, 'w') as script_dst:
+                      print >> script_dst, '# Contents of script: %s' % (script_path)
+                      print >> script_dst, script_src.read()
+                except:
+                  logging.exception('Failed to read a presumed script file. The preceding stack frame was: %s', stack[j])
 
         try:
             if in_qtlab:
@@ -1192,7 +1219,8 @@ class Data(SharedGObject):
         self._count_coord_val_dims()
 
         if cache == None:
-          logging.info('Finished reading %d data points. Data buffer size was %d points.' % (row_no, len(data)))
+          logging.info('Finished reading %d data points. (Debug: buffer size was %d points.)',
+                       1+row_no, len(data))
           self._data = data[:1+row_no,:]
 
         self._npoints = len(self._data)
@@ -1265,7 +1293,17 @@ class Data(SharedGObject):
 
         m = self._META_COMMENTRE.match(line)
         if m is not None:
-            self._comment.append( (line_number, m.group(1)) )
+            is_continued_comment = line.startswith(self._META_NEWLINE_IN_COMMENT)
+            if is_continued_comment and len(self._comment) < 1:
+                logging.warn('Comment "%s" looks like a continuation of a previous comment but there are no previous comments!', line)
+                is_continued_comment = False
+            if not is_continued_comment:
+                self._comment.append( (line_number, m.group(1)) )
+            else:
+                # append to the previous comment
+                self._comment[-1] = (self._comment[-1][0],
+                                     "%s\n%s" % (self._comment[-1][1],
+                                                 line[len(self._META_NEWLINE_IN_COMMENT):]) )
 
     def _reshape_data(self):
         '''

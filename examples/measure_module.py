@@ -16,6 +16,27 @@
 # object that exist in the main namespace (like instruments)
 # need to be imported explicitly.
 
+# Note about plotting:
+#
+# You can produce "live" plots of data with syntax like this:
+# p = plot.get_plot('test measurement live plot',
+#                   replace_if_exists=True)
+# p.add_data(data) # where data is a qt.Data object
+# p.set_default_labels()
+#
+# In general however, it's better to plot your data in
+# an entirely separate process from the main qtlab instance
+# controlling your measurement hardware.
+#
+# This allows you to change your plotting routine while
+# your measurement is still running. It also makes sure
+# that your measurement process doesn't get killed by
+# the operating system if you accidentally plot enormous
+# datasets that hog too much memory.
+#
+# See plotting examples and the "dataview" example.
+
+
 import numpy
 from time import time,sleep
 import os
@@ -75,9 +96,6 @@ def example1(f_vec, b_vec):
     data.add_coordinate('Bfield, ivvi dac 3 [mV]')
     data.add_value('Psw SQUID')
     data.create_file()
-
-    plot2d = qt.Plot2D(data, name='measure2D')
-    plot3d = qt.Plot3D(data, name='measure3D', style='image')
 
     for b in b_vec:
         fake_ivvi_set_dac_3(b)
@@ -142,10 +160,6 @@ def example2(f_vec, b_vec):
             filepath=maxfilepath, 
             settings_file=False)
 
-    plot2d = qt.Plot2D(data, name='measure2D')
-    plot3d = qt.Plot3D(data, name='measure3D', style='image')
-
-    plot2dmax = qt.Plot2D(data_max, name='maxvals')
 
     for b in b_vec:
         fake_ivvi_set_dac_3(b)
@@ -169,67 +183,5 @@ def example2(f_vec, b_vec):
 
     data.close_file()
     data_max.close_file()
-    qt.mend()
-
-
-#######################
-# example 3 - plotting
-#######################
-
-def example3(x_vec=numpy.linspace(0,10,10), y_vec=numpy.linspace(0,10,50)):
-    '''
-    To run the function type in the terminal:
-   
-    measure_module.example3()
-    '''
-
-    qt.mstart()
-
-    data = qt.Data(name='testmeasurement')
-    data.add_coordinate('x')
-    data.add_coordinate('y')
-    data.add_value('z1')
-    data.add_value('z2')
-    data.add_value('z3')
-    data.create_file()
-
-    plot2d_1 = qt.Plot2D(data, name='2D_1', coorddim=1, valdim=2)
-
-    plot2d_2 = qt.Plot2D(data, name='2D_2', coorddim=1, valdim=2, maxtraces=1)
-
-    plot2d_3 = qt.Plot2D(data, name='2D_3', coorddim=1, valdim=2, maxtraces=1)
-    plot2d_3.add_data(data, coorddim=1, valdim=3, maxtraces=1)
-    plot2d_3.add_data(data, coorddim=1, valdim=4, maxtraces=1)
-
-    plot2d_4 = qt.Plot2D(data, name='2D_4', coorddim=1, valdim=2, mintime=0.3)
-
-    plot2d_5 = qt.Plot2D(data, name='2D_5', coorddim=1, valdim=2, autoupdate=False)
-
-    plot3d_1 = qt.Plot3D(data, name='3D_1', style='image')
-
-    plot3d_2 = qt.Plot3D(data, name='3D_2', style='image', coorddims=(1,0), valdim=4)
-
-    for x in x_vec:
-        for y in y_vec:
-
-            z1 = numpy.sin(x+y)
-            z2 = numpy.cos(x+y)
-            z3 = numpy.sin(x+2*y)
-
-            data.add_data_point(x, y, z1, z2, z3)
-
-            if z1>0:
-                plot2d_5.update()
-
-            qt.msleep(0.1)
-        data.new_block()
-
-    plot2d_1.save_png()
-    plot2d_1.save_gp()
-
-    plot3d_2.save_png()
-    plot3d_2.save_gp()
-
-    data.close_file()
     qt.mend()
 

@@ -84,14 +84,17 @@ class Config(gobject.GObject):
         Load settings.
         '''
 
+        filename = self._get_filename()
         try:
-            filename = self._get_filename()
             logging.debug('Loading settings from %s', filename)
             f = file(self._get_filename(), 'r')
             self._config = json.load(f)
             f.close()
         except Exception, e:
-            logging.warning('Unable to load config file')
+            if os.path.exists(filename):
+              logging.warning('Unable to load config file: %s', filename)
+            else:
+              logging.debug('No config file at %s.', filename)
             self._config = {}
 
     def remove(self, remove_list, save=True):

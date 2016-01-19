@@ -825,9 +825,12 @@ class PythonInterpreter(SharedObject):
         cev = threading.Event()
         rev = threading.Event()
         try:
-            ip = IPython.core.ipapi.get()
+            ip = IPython.get_ipython()
         except:
-            ip = IPython.ipapi.get()
+            try:
+                ip = IPython.core.ipapi.get()
+            except:
+                ip = IPython.ipapi.get()
         ip.IP.code_queue.put((c, cev, rev))
 
 helper = ObjectSharer()

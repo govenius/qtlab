@@ -7,8 +7,10 @@
 from numpy import pi, linspace, sinc
 from lib.file_support.settingsfile import SettingsFile
 from pprint import pprint
+import plot
+import qt
 
-x_vec = linspace(-2 * pi, 2 * pi, 200)
+x_vec = linspace(-2 * pi, 2 * pi, 150)
 
 qt.mstart()
 
@@ -17,13 +19,22 @@ data.add_coordinate('X')
 data.add_value('Y')
 data.create_file()
 
-plot3d = qt.Plot2D(data, name='measure2D', coorddims=0, valdim=1)
+# This plots the data as points are added.
+# In general however, it's better to plot your data in
+# an entirely separate process from the main qtlab instance
+# controlling your measurement hardware.
+# See other plotting examples and the "dataview" example.
+p = plot.get_plot('test measurement plot',
+                  replace_if_exists=True)
+p.add_data(data)
+p.set_default_labels()
+p.get_plot().set_xrange(-8,8)
 
 for x in x_vec:
 
     result = sinc(x)
     data.add_data_point(x, result)
-    qt.msleep(0.02)
+    qt.msleep(0.05) # simulate a real measurement with this delay
 
 data.close_file()
 qt.mend()

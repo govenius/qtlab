@@ -1,5 +1,6 @@
 import numpy as np
 import qt
+import plot
 
 x = np.arange(-10, 10, 0.2)
 y = np.sinc(x)
@@ -12,8 +13,9 @@ d.add_coordinate('yerr')
 d.create_file()
 d.add_data_point(x,y,yerr)
 
-p = qt.Plot2D()
-p.add_data(d, coorddim=0, valdim=1, yerrdim=2)
-
-# or: ('ok' is style for black circles)
-qt.plot(x, y, 'ok', yerr=yerr, name='test2')
+p = plot.get_plot('error bar test plot',
+                  replace_if_exists=True)
+p = p.get_plot()
+p.add_trace(d['x'], d['y'], yerr=d['yerr'])
+p.update()
+#.run() # necessary if you've closed the window

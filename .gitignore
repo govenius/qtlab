@@ -1,4 +1,8 @@
-.gitignore
+*~
+*#
+#*
+*\#
+\#*
 *.pyc
 qtlab.log
 qtlab.cfg

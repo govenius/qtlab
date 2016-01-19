@@ -59,7 +59,7 @@ class Gigatronics_2550B(Instrument):
             flags=Instrument.FLAG_GETSET, units='dBm', minval=-135, maxval=25, type=types.FloatType)
         self.add_parameter('phase',
             flags=Instrument.FLAG_GETSET, units='rad', minval=-numpy.pi, maxval=numpy.pi, type=types.FloatType)
-        self.add_parameter('frequency',
+        self.add_parameter('frequency', format='%.09e',
             flags=Instrument.FLAG_GETSET, units='Hz', minval=1e5, maxval=50e9, type=types.FloatType, cache_time=1.)
         self.add_parameter('alc_source',
             flags=Instrument.FLAG_GETSET, type=types.StringType)
@@ -175,7 +175,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set ALC source to %f' % val)
+        logging.debug(__name__ + ' : set ALC source to %s' % val)
         self._visainstrument.write('POW:ALC:SOUR %s' % val)
 
     def do_get_trigger_source(self):
@@ -205,7 +205,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set trigger source to %f' % val)
+        logging.debug(__name__ + ' : set trigger source to %s' % val)
         self._visainstrument.write('TRIG:SOUR %s' % val)
 
     def do_get_pulse_modulation(self):
@@ -232,7 +232,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set pulse modulation to %f' % val)
+        logging.debug(__name__ + ' : set pulse modulation to %s' % val)
         self._visainstrument.write('PULM:STAT %s' % str(int(val)))
 
     def do_get_pulse_modulation_inverted_polarity(self):
@@ -259,7 +259,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set  to %f' % val)
+        logging.debug(__name__ + ' : set  to %s' % val)
         self._visainstrument.write('PULM:EXT:POL %s' % ('INV' if val else 'NORM'))
 
     def do_get_pulse_modulation_source(self):
@@ -285,7 +285,7 @@ class Gigatronics_2550B(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : set  to %f' % val)
+        logging.debug(__name__ + ' : set  to %s' % val)
         self._visainstrument.write('PULM:SOUR %s' % val)
 
     def do_get_power_correction_offset(self):
@@ -442,7 +442,10 @@ class Gigatronics_2550B(Instrument):
         f0 = self.do_get_frequency()
         
         logging.debug(__name__ + ' : set frequency to %f' % freq)
-        self._visainstrument.write('FREQ:CW %s' % freq)
+        rounded = '%.3f' % numpy.round(freq,decimals=3)
+        if numpy.abs(float(rounded) - freq) > numpy.finfo(numpy.float).tiny:
+          logging.warn('Rounding the requested frequency (%.15e) to %s (i.e. by %.6e).' % (freq, rounded, float(rounded) - freq))
+        self._visainstrument.write('FREQ:CW %s' % rounded)
 
         # the power takes a much longer time to stabilize for frequencies below 2 GHz
         if freq <= 2e9: time.sleep(.1) # sleep 500ms so that power stabilizes

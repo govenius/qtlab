@@ -4,6 +4,9 @@
 
 from numpy import pi, random, arange, size
 from time import time,sleep
+import qt
+import plot
+import os
 
 #####################################################
 # this part is to simulate some data, you can skip it
@@ -39,8 +42,8 @@ def fake_readout_psw():
 
 # you define two vectors of what you want to sweep. In this case
 # a magnetic field (b_vec) and a frequency (f_vec)
-f_vec = arange(0,10,0.01)
-b_vec = arange(-5,5,0.1)
+f_vec = arange(0,10,0.1)
+b_vec = arange(-5,5,0.5)
 
 # you indicate that a measurement is about to start and other
 # processes should stop (like batterycheckers, or temperature
@@ -71,13 +74,7 @@ data.add_value('Psw SQUID')
 # is created containing the current settings of all the instruments.
 data.create_file()
 
-# Next two plot-objects are created. First argument is the data object
-# that needs to be plotted. To prevent new windows from popping up each
-# measurement a 'name' can be provided so that window can be reused.
-# If the 'name' doesn't already exists, a new window with that name
-# will be created. For 3d plots, a plotting style is set.
-plot2d = qt.Plot2D(data, name='measure2D', coorddim=0, valdim=2, traceofs=10)
-plot3d = qt.Plot3D(data, name='measure3D', coorddims=(0,1), valdim=2, style='image')
+print 'Data stored in %s.' % os.path.abspath(data.get_dir())
 
 # preparation is done, now start the measurement.
 # It is actually a simple loop.
@@ -91,21 +88,21 @@ for b in b_vec:
         # readout
         result = fake_readout_psw()
 
-        # save the data point to the file, this will automatically trigger
-        # the plot windows to update
+        # save the data point to the file
         data.add_data_point(f, b, result)
 
         # the next function is necessary to keep the gui responsive. It
-        # checks for instance if the 'stop' button is pushed. It also checks
-        # if the plots need updating.
+        # checks for instance if the 'stop' button is pushed.
         qt.msleep(0.001)
 
     # the next line defines the end of a single 'block', which is when sweeping
-    # the most inner loop finishes. An empty line is put in the datafile, and
-    # the 3d plot is updated.
+    # the most inner loop finishes.
     data.new_block()
 
 # after the measurement ends, you need to close the data file.
 data.close_file()
 # lastly tell the secondary processes (if any) that they are allowed to start again.
 qt.mend()
+
+# See examples/plots.py and examples/analysis_with_dataview.py for examples of plotting
+# and otherwise processing your data.

@@ -100,12 +100,16 @@ def usleep(usec):
     while (exact_time() - start) * 1e6 < usec:
         pass
 
-def get_ipython():
+def get_ipython_backward_compatible():
     import IPython
-    if ipython_is_newer((0, 11)):
-        return IPython.core.ipapi.get()
-    else:
-        return IPython.ipapi.get()
+    try:
+        ip = IPython.get_ipython() # new iPython
+    except:
+        try:
+            ip = IPython.core.ipapi.get() # older iPython
+        except:
+            ip = IPython.ipapi.get() # really old iPython
+    return ip
 
 def get_traceback():
     if ipython_is_newer((0, 11)):
@@ -131,11 +135,11 @@ def ipython_is_newer(vin):
     return True
 
 def is_ipython():
-    return get_ipython() != None
+    return get_ipython_backward_compatible() != None
 
 def exit_shell():
     if is_ipython():
-        ip = get_ipython()
+        ip = get_ipython_backward_compatible()
         if ipython_is_newer((0, 11)):
             ip.exit() # FIXME This gives annoying request for y/n when called
         else:
@@ -144,7 +148,7 @@ def exit_shell():
 
 def register_exit(func):
     if is_ipython():
-        ip = get_ipython()
+        ip = get_ipython_backward_compatible()
         if ipython_is_newer((0, 11)):
             ip.hooks['shutdown_hook'].add(func, 1)
         else:

@@ -58,7 +58,14 @@ B) other programs.
     libraries used for creating graphical interfaces.
     URL: pygtk.org
 
-5) pyvisa (1.3)
+5) jinja2 (>=2.7.2)
+
+    Templating library used for generating plots.
+    Can be installed by unpacking the latest .tar and linking/copying
+    the "jinja2" subdirectory to anywhere in Python's path (e.g. "3rd_party").
+    URL: jinja.pocoo.org/
+
+6) pyvisa (1.3)
 
     library for communication with GPIB/USB/SERIAL instruments
     URL: pyvisa.sourceforge.net/
@@ -77,6 +84,14 @@ B) other programs.
 
     NOTE: Don't get the _src version, but just the
     regular binary version from the files list.
+
+3) subprocess32 (if using Python 2.7.*)
+
+    Backport of (some features of) the subprocess module from Python 3 to Python 2.
+    Can be installed by unpacking the latest .tar and linking/copying
+    the "subprocess32.py" file to anywhere in Python's path (e.g. "3rd_party").
+    URL: pypi.python.org/pypi/subprocess32/
+
 
 To 'install' the programs of group B, we recommend the following.
 

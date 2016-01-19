@@ -1,5 +1,6 @@
 import os
 import sys
+import lib
 
 def insert_in_file_list(entries, entry, ignore_list):
     adddir, addname = entry
@@ -47,12 +48,11 @@ def show_start_help():
     print '\t\t\t(can be used multiple times'
 
     import IPython
+    ip = lib.misc.get_ipython_backward_compatible()
     ip_version = IPython.__version__.split('.')
     if int(ip_version[0]) > 0 or int(ip_version[1]) > 10:
-        ip = IPython.core.ipapi.get()
         ip.exit()
     else:
-        ip = IPython.ipapi.get()
         ip.magic('Exit')
 
 def do_start():

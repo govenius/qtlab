@@ -30,13 +30,54 @@ from data import Data
 from lib import namedlist
 from lib.misc import get_dict_keys
 from lib.network.object_sharer import SharedGObject, cache_result
+from plotbridge.plotbridge import Plot as plotbridge_plot
 
-def _convert_arrays(args):
-    args = list(args)
-    for i in range(len(args)):
-        if type(args[i]) in (types.ListType, types.TupleType):
-            args[i] = numpy.array(args[i])
-    return args
+
+def get_plot(name=None,
+             mintime=1,
+             autoupdate=True,
+             template='gnuplot_2d',
+             output_dir='.',
+             run=True,
+             replace_if_exists=False):
+    '''
+    Get a reference to an existing plot or create a new one.
+
+    See plot.Plot? for description of arguments. Additionally:
+        
+        replace_if_exists: create a new plot, even if an old one by the same name exists.
+    '''
+
+    graph = Plot._plot_list[name]
+    if replace_if_exists and graph != None:
+      Plot._plot_list.remove(name)
+      graph = None
+
+    if graph is None:
+        graph = Plot(name,
+                     mintime,
+                     autoupdate,
+                     template,
+                     output_dir,
+                     run)
+
+    return graph
+
+def get_plots():
+    '''
+    Return all plots as a named list.
+    '''
+
+    return Plot._plot_list
+
+def replot_all():
+    '''
+    Update all plots in the plot-list.
+    '''
+    plots = Plot._plot_list
+    for p in plots:
+        plots[p]._pltbr.update()
+
 
 class _PlotList(namedlist.NamedList):
     def __init__(self):
@@ -45,121 +86,152 @@ class _PlotList(namedlist.NamedList):
     def add(self, name, item):
         '''Add an item to the list.'''
         if name in self._list:
-            self.remove(name, send_quit=False)
+            self.remove(name)
         self._list[name] = item
         self._last_item = item
         self.emit('item-added', name)
 
-    def remove(self, name, send_quit=True):
-        '''Remove a plot (should be cleared and closed).'''
-        if name in self:
-            self[name].clear()
-            if send_quit:
-                self[name].quit()
-        namedlist.NamedList.remove(self, name)
 
 class Plot(SharedGObject):
     '''
-    Base class / interface for plot implementations.
+    Class for plotting Data objects.
 
-    Implementing _do_update will make sure the plot is updated when new data
-    is available (only when the global qt auto_update flag is set and the
-    plot was last updated longer than mintime (sec) ago.
+    This is a thin wrapper around plot_engines/plotbridge.py
+    and mainly adds (some degree of) backward compatibility
+    and the possibility to have your plot automatically
+    update as new data is added to the Data object.
+
+    Additionally, this class keeps a list of plots, allowing
+    you to recover a reference to an old plot by its name
+    using plot.get_plot('name of plot').
+
+    To customize the plot, use the plot.get_plot('name of plot').get_plot()
+    function, which returns the underlying plotbridge object.
+
+    If you are not plotting Data objects (i.e. just numpy arrays),
+    you should use plotbridge directly.
     '''
 
     _plot_list = _PlotList()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self,
+                 name=None,
+                 mintime=1,
+                 autoupdate=True,
+                 template='gnuplot_2d',
+                 output_dir='.',
+                 run=True):
         '''
-        Create a plot object.
+        Create a plot wrapper for plotting qt.Data objects.
 
         args input:
             data objects (Data)
-            filenames (string)
 
         kwargs input:
-            name (string), default will be 'plot<n>'
-            maxpoints (int), maximum number of points to show, default 10000
-            maxtraces (int), maximum number of traces to show, default 5
-            mintime (int, seconds), default 1
-            autoupdate (bool), default None, which means listen to global
-            needtempfile (bool), default False. Whether the plot needs data
-            in a temporary file.
-            supportbin (bool), default False. Whether the temporary file can
-            be in binary format.
-        '''
+            name (string)           --- default 'plot<n>'
+            mintime (int, seconds)  --- min time between autoupdates, default 1
+            autoupdate (bool)       --- update the plot when data points added, default True
+            template (string)       --- default 'gnuplot_2d'
+            output_dir (string)     --- directory for storing the plot. default '.'
+            run (bool)              --- whether the plot script should be immediately ran (opened)
+                                        (But a window may not pop up until data is added.)
+         '''
 
-        maxpoints = kwargs.get('maxpoints', 10000)
-        maxtraces = kwargs.get('maxtraces', 5)
-        mintime = kwargs.get('mintime', 1)
-        autoupdate = kwargs.get('autoupdate', None)
-        needtempfile = kwargs.get('needtempfile', False)
-        supportbin = kwargs.get('supportbin', False)
-        name = kwargs.get('name', '')
-        self._name = Plot._plot_list.new_item_name(self, name)
+        self._name = name if name else ''
+        self._name = Plot._plot_list.new_item_name(self, self._name)
+
         SharedGObject.__init__(self, 'plot_%s' % self._name, replace=True)
+
 
         self._data = []
 
-        # Plot properties, things such as maxpoints might be migrated here.
-        self._properties = {}
-
-        self._maxpoints = maxpoints
-        self._maxtraces = maxtraces
         self._mintime = mintime
         self._autoupdate = autoupdate
-        self._needtempfile = needtempfile
-        self._supportbin = supportbin
 
         self._last_update = 0
         self._update_hid = None
 
-        data_args = get_dict_keys(kwargs, ('coorddim', 'coorddims', 'valdim',
-            'title', 'offset', 'ofs', 'traceofs', 'surfofs'))
-        data_args['update'] = False
-        data_args['setlabels'] = False
-        self.add(*args, **data_args)
+        self._pltbr = plotbridge_plot(name=self._name, template=template,
+                                          output_dir=output_dir, overwrite=True)
 
         Plot._plot_list.add(self._name, self)
+
+        if run:
+          self._pltbr.run(interactive=True)
+
+    def get_plot(self):
+      ''' Returns the underlying plotbridge object. Useful for customizing plot options. '''
+      return self._pltbr
 
     def get_name(self):
         '''Get plot name.'''
         return self._name
 
-    _ADD_DATA_PLOT_OPTS = set((
-        'xrange', 'yrange', 'zrange',
-    ))
+    def add_data(self, data, coorddim=0, valdim=1, title=None, update=True):
+        '''
+        Add a Data object to the plot.
 
-    def add_data(self, data, **kwargs):
-        '''Add a Data class with options to the plot list.'''
+        Input:
+            data (Data):
+                qt.Data object
+            coorddim (int or tuple of ints):
+                Which coordinate column(s) to use (default 0). Use, e.g., [0,1] for 3D plots.
+            valdim (int or tuple of ints):
+                Which value column to use.
+            title (string): name of the trace
+            update: whether to the plot should be updated immediately
+        '''
 
-        # Extract options that apply to the global plot
-        plot_opts = self._ADD_DATA_PLOT_OPTS & set(kwargs.keys())
-        for key in plot_opts:
-            val = kwargs.pop(key)
-            self.set_property(key, val)
-
-        kwargs['data'] = data
-        kwargs['new-data-point-hid'] = \
+        data_entry = {}
+        data_entry['data'] = data
+        data_entry['new-data-point-hid'] = \
                 data.connect('new-data-point', self._new_data_point_cb)
-        kwargs['new-data-block-hid'] = \
+        data_entry['new-data-block-hid'] = \
                 data.connect('new-data-block', self._new_data_block_cb)
 
-        if 'title' not in kwargs:
-            coorddims = kwargs['coorddims']
-            valdim = kwargs['valdim']
-            kwargs['title'] = data.get_title(coorddims, valdim)
+        coorddims = [ coorddim ] if isinstance(coorddim, int) else coorddim # convert a single int to a list
+        data_entry['coorddims'] = coorddims
 
-        # Enable y2tics if plotting or right axis and not explicitly disabled
-        if kwargs.get('right', False):
-            if self.get_property('y2tics', None) is None:
-                self.set_property('y2tics', True)
+        data_entry['valdim'] = valdim
 
-        self._data.append(kwargs)
+        data_entry['title'] = title if title else data.get_title(coorddims, valdim)
 
-    def add_file(self, filename, **kwargs):
-        kwargs['file'] = filename
-        self._data.append(kwargs)
+        self._data.append(data_entry)
+
+        if update: self.update()
+
+    def set_default_labels(self):
+        '''
+        Set default labels for the plot based on the names of the columns in the qt.Data object(s).
+        '''
+
+        x = ''
+        y = ''
+        z = ''
+        for datadict in self._data:
+            data = datadict['data']
+
+            if x == '' and len(datadict['coorddims']) > 0:
+                x = data.format_label(datadict['coorddims'][0])
+
+            if y == '' and len(datadict['coorddims']) == 1:
+                y = data.format_label(datadict['valdim'])
+            elif y == '':
+                y = data.format_label(datadict['coorddims'][1])
+
+            if z == '' and len(datadict['coorddims']) > 1:
+                z = data.format_label(datadict['valdim'])
+
+        if x == '':
+            x = 'X'
+        self._pltbr.set_xlabel(x)
+        if y == '':
+            y = 'Y'
+        self._pltbr.set_ylabel(y)
+        if z == '':
+            z = 'Z'
+        self._pltbr.set_zlabel(z)
+        self._pltbr.set_cblabel(z)
 
     def set_mintime(self, t):
         self._mintime = t
@@ -167,148 +239,12 @@ class Plot(SharedGObject):
     def get_mintime(self):
         return self._mintime
 
-    def set_maxtraces(self, n):
-        self._maxtraces = n
-
-    def get_maxtraces(self):
-        return self._maxtraces
-
-    def set_maxpoints(self, n):
-        self._maxpoints = n
-
-    def get_maxpoints(self):
-        return self._maxpoints
-
-    def set_property(self, prop, val, update=False):
-        self._properties[prop] = val
-        if update:
-            self.update()
-
-    def get_property(self, prop, default=None):
-        return self._properties.get(prop, default)
-
-    def get_properties(self):
-        return self._properties
-
-    def set_properties(self, props, update=True):
-        for key, val in props.iteritems():
-            self.set_property(key, val, update=False)
-        if update:
-            self.update()
-
-    # Predefined properties, actual handling needs to be implemented in
-    # the set_property() function of the implementation class.
-
-    def set_xlabel(self, val, update=True):
-        '''Set label for left x axis.'''
-        self.set_property('xlabel', val, update=update)
-
-    def set_x2label(self, val, update=True):
-        '''Set label for right x axis.'''
-        self.set_property('x2label', val, update=update)
-
-    def set_ylabel(self, val, update=True):
-        '''Set label for bottom y axis.'''
-        self.set_property('ylabel', val, update=update)
-
-    def set_y2label(self, val, update=True):
-        '''Set label for top y axis.'''
-        self.set_property('y2label', val, update=update)
-
-    def set_zlabel(self, val, update=True):
-        '''Set label for z/color axis.'''
-        self.set_property('zlabel', val, update=update)
-
-    def set_cblabel(self, val, update=True):
-        '''Set label for z/color axis.'''
-        self.set_property('cblabel', val, update=update)
-
-    def set_xlog(self, val, update=True):
-        '''Set log scale on left x axis.'''
-        self.set_property('xlog', val, update=update)
-
-    def set_x2log(self, val, update=True):
-        '''Set log scale on right x axis.'''
-        self.set_property('x2log', val, update=update)
-
-    def set_ylog(self, val, update=True):
-        '''Set log scale on bottom y axis.'''
-        self.set_property('ylog', val, update=update)
-
-    def set_y2log(self, val, update=True):
-        '''Set log scale on top y axis.'''
-        self.set_property('y2log', val, update=update)
-
-    def set_xtics(self, val, update=True, options=None):
-        '''Enable/disable tics on left x axis.'''
-        if (not val) or options==None: self.set_property('xtics', val, update=update)
-        else:                          self.set_property('xtics', str(options), update=update)
-
-    def set_x2tics(self, val, update=True, options=None):
-        '''Enable/disable tics on right x axis.'''
-        if (not val) or options==None: self.set_property('x2tics', val, update=update)
-        else:                          self.set_property('x2tics', str(options), update=update)
-
-    def set_ytics(self, val, update=True, options=None):
-        '''Enable/disable tics on bottom y axis.'''
-        if (not val) or options==None: self.set_property('ytics', val, update=update)
-        else:                          self.set_property('ytics', str(options), update=update)
-
-    def set_y2tics(self, val, update=True, options=None):
-        '''Enable/disable tics on top y axis.'''
-        if (not val) or options==None: self.set_property('y2tics', val, update=update)
-        else:                          self.set_property('y2tics', str(options), update=update)
-
-    def set_ztics(self, val, update=True, options=None):
-        '''Enable/disable tics on z axis.'''
-        if (not val) or options==None: self.set_property('ztics', val, update=update)
-        else:                          self.set_property('ztics', str(options), update=update)
-
-    # Implementation classes need to implement set_range()
-
-    def set_xrange(self, minval=None, maxval=None, update=True):
-        '''Set left x axis range, None means auto.'''
-        self.set_range('x', minval, maxval, update=update)
-
-    def set_x2range(self, minval=None, maxval=None, update=True):
-        '''Set right x axis range, None means auto.'''
-        self.set_range('x2', minval, maxval, update=update)
-
-    def set_yrange(self, minval=None, maxval=None, update=True):
-        '''Set bottom y axis range, None means auto.'''
-        self.set_range('y', minval, maxval, update=update)
-
-    def set_y2range(self, minval=None, maxval=None, update=True):
-        '''Set top y axis range, None means auto.'''
-        self.set_range('y2', minval, maxval, update=update)
-
-    def set_zrange(self, minval=None, maxval=None, update=True):
-        '''Set z axis range, None means auto.'''
-        self.set_range('z', minval, maxval, update=update)
-
     def clear(self):
-        '''Clear the plot and remove all data items.'''
+        self._date = []
+        self._pltbr.clear(update=True)
 
-        logging.info('Clearing plot %s...', self._name)
-        while len(self._data) > 0:
-            info = self._data[0]
-            if 'new-data-point-hid' in info:
-                info['data'].disconnect(info['new-data-point-hid'])
-            if 'new-data-block-hid' in info:
-                info['data'].disconnect(info['new-data-block-hid'])
-            del self._data[0]
-
-    def quit(self):
-        '''Close back-end, override in implementation'''
-        pass
-
-    def set_title(self, val):
-        '''Set the title of the plot window. Override in implementation.'''
-        pass
-
-    def add_legend(self, val):
-        '''Add a legend to the plot window. Override in implementation.'''
-        pass
+    def reset(self):
+        self._pltbr.reset_options()
 
     def update(self, force=True, **kwargs):
         '''
@@ -319,7 +255,6 @@ class Plot(SharedGObject):
                 would like to autoupdate and whether the last update is longer
                 than 'mintime' ago.
         '''
-
         dt = time.time() - self._last_update
 
         if not force and self._autoupdate is not None and not self._autoupdate:
@@ -334,16 +269,26 @@ class Plot(SharedGObject):
 
         cfgau = config.get('live-plot', True)
         if force or (cfgau and dt > self._mintime):
-            if self.is_busy():
-                self._queue_update(force=force, **kwargs)
-                return
-
             self._last_update = time.time()
             self._do_update(**kwargs)
 
         # Auto-update later
         elif cfgau:
             self._queue_update(force=force, **kwargs)
+
+    def _do_update(self):
+      if len(self._data) == 0:
+        self._pltbr.update() # not plotting data objects
+      else:
+        # Plot data from the specified data objects 
+        self._pltbr.clear()
+        for d in self._data:
+          if d['data'].get_npoints() == 0: continue
+          if len(d['coorddims']) > 1: logging.warn('Multidimensional plots from Data files not implemented.')
+          self._pltbr.add_trace(d['data'].get_data()[:,d['coorddims'][0]],
+                                d['data'].get_data()[:,d['valdim']],
+                                title=d['title'])
+        self._pltbr.update()
 
     def _queue_update(self, force=False, **kwargs):
         if self._update_hid is not None:
@@ -365,436 +310,32 @@ class Plot(SharedGObject):
     def _new_data_block_cb(self, sender):
         self.update(force=False)
 
-    def set_maxpoints(self, val):
-        self._maxpoints = val
+    def save_png(self, *args, **kwargs):
+      ''' Deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). '''
+      self._pltbr.set_export_png(True)
+      logging.warn('This function is deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). Arguments ignored: %s, %s', args, kwargs)
 
-    @staticmethod
-    def get_named_list():
-        return Plot._plot_list
-
-    @staticmethod
-    def get(name):
-        return Plot._plot_list[name]
-
-    def get_needtempfile(self):
-        '''Return whether this plot type needs temporary files.'''
-        return self._needtempfile
-
-    def get_support_binary(self):
-        '''Return whether this plot supports binary files.'''
-        return self._supportbin
-
-    def is_busy(self):
-        '''Return whether the graph is being updated.'''
-        return False
-
-    def _process_plot_options(self, kwargs):
-        clear = kwargs.pop('clear', False)
-        if clear:
-            self.clear()
-
-        opts = ('xlabel', 'x2label', 'ylabel', 'y2label', 'zlabel', \
-                'xtics', 'x2tics', 'ytics', 'y2tics', 'ztics', \
-                'cblabel', 'legend', 'plottitle', 'grid')
-
-        for key in opts:
-            if key in kwargs:
-                self.set_property(key, kwargs.pop(key), update=False)
-
-        if 'style' in kwargs:
-            self.set_style(kwargs.pop('style'), update=False)
-
-class Plot2DBase(Plot):
-    '''
-    Abstract base class for a 2D plot.
-    Real implementations should at least implement:
-        - set_xlabel(self, label)
-        - set_ylabel(self, label)
-    '''
-
-    def __init__(self, *args, **kwargs):
-        Plot.__init__(self, *args, **kwargs)
-
-    @cache_result
-    def get_ndimensions(self):
-        return 2
-
-    def add_data(self, data, coorddim=None, valdim=None, **kwargs):
-        '''
-        Add Data object to 2D plot.
-
-        Input:
-            data (Data):
-                Data object
-            coorddim (int):
-                Which coordinate column to use (0 by default)
-            valdim (int):
-                Which value column to use for plotting (0 by default)
-        '''
-
-        if coorddim is None:
-            ncoord = data.get_ncoordinates()
-            #FIXME: labels
-            if ncoord == 0:
-                coorddims = ()
-            else:
-                coorddims = (0,)
-                if ncoord > 1:
-                    logging.info('Data object has multiple coordinates, using the first one')
-        else:
-            coorddims = (coorddim,)
-
-        if valdim is None:
-            if data.get_nvalues() > 1:
-                logging.info('Data object has multiple values, using the first one')
-            valdim = data.get_ncoordinates()
-
-        kwargs['coorddims'] = coorddims
-        kwargs['valdim'] = valdim
-        Plot.add_data(self, data, **kwargs)
-
-    def add(self, *args, **kwargs):
-        '''
-        Add data object or list / numpy.array to the current plot.
-        '''
-
-        args = _convert_arrays(args)
-        coorddim = kwargs.pop('coorddim', None)
-        globalx = kwargs.pop('x', None)
-        valdim = kwargs.pop('valdim', None)
-        update = kwargs.pop('update', True)
-        self._process_plot_options(kwargs)
-
-        i = 0
-        while i < len(args):
-
-            # This is easy
-            if isinstance(args[i], Data):
-                data = args[i]
-                i += 1
-
-            elif isinstance(args[i], numpy.ndarray):
-                if len(args[i].shape) == 1:
-                    if globalx is not None:
-                        y = args[i]
-                        data = numpy.column_stack((globalx, y))
-                        i += 1
-                    elif i + 1 < len(args) and isinstance(args[i+1], numpy.ndarray):
-                        x = args[i]
-                        y = args[i + 1]
-                        data = numpy.column_stack((x, y))
-                        i += 2
-                    else:
-                        data = args[i]
-                        i += 1
-
-                elif len(args[i].shape) == 2 and args[i].shape[1] == 2:
-                    data = args[i]
-                    i += 1
-
-                else:
-                    logging.warning('Unable to plot array of shape %r',
-                            (args[i].shape))
-                    i += 1
-                    continue
-
-                tmp = self.get_needtempfile()
-                if not self.get_support_binary():
-                    kwargs['binary'] = False
-                elif 'binary' not in kwargs:
-                    kwargs['binary'] = True
-
-                if 'yerr' in kwargs:
-                    assert len(kwargs['yerr']) == len(data), 'yerr must be a 1D vector of the same length as the data.'
-                    data = numpy.column_stack((data, kwargs['yerr']))
-                    if coorddim is None: coorddim = 0
-                    if valdim is None:   valdim = 1
-                    kwargs['yerrdim'] = 2
-
-                data = Data(data=data, tempfile=tmp, binary=kwargs['binary'])
-
-            else:
-                logging.warning('Unhandled argument: %r', args[i])
-                i += 1
-                continue
-
-            # data contains a valid data object, add some options and plot it
-            opts = _get_plot_options(i, *args)
-            for key, val in opts.iteritems():
-                kwargs[key] = val
-            i += len(opts)
-
-            self.add_data(data, coorddim=coorddim, valdim=valdim, **kwargs)
-
-        if update:
-            self.update()
-
-    def set_labels(self, left='', bottom='', right='', top='', update=True):
-        for datadict in self._data:
-            data = datadict['data']
-            if len(datadict['coorddims']) > 0:
-                if 'top' in datadict and top == '':
-                    top = data.format_label(datadict['coorddims'][0])
-                elif bottom == '':
-                    bottom = data.format_label(datadict['coorddims'][0])
-
-            if 'right' in datadict and right == '':
-                right = data.format_label(datadict['valdim'])
-            elif left == '':
-                 left = data.format_label(datadict['valdim'])
-
-        if left == '':
-            left = 'Y'
-        self.set_ylabel(left, update=False)
-        self.set_y2label(right, update=False)
-        if bottom == '':
-            bottom = 'X'
-        self.set_xlabel(bottom, update=False)
-        self.set_x2label(top, update=False)
-
-        if update:
-            self.update()
-
-class Plot3DBase(Plot):
-    '''
-    Abstract base class for a 3D plot.
-    Real implementations should at least implement:
-        - set_xlabel(self, label)
-        - set_ylabel(self, label)
-        - set_zlabel(self, label)
-    '''
-
-    def __init__(self, *args, **kwargs):
-        if 'mintime' not in kwargs:
-            kwargs['mintime'] = 2
-        Plot.__init__(self, *args, **kwargs)
-
-    @cache_result
-    def get_ndimensions(self):
-        return 3
-
-    def add_data(self, data, coorddims=None, valdim=None, **kwargs):
-        '''
-        Add data to 3D plot.
-
-        Input:
-            data (Data):
-                Data object
-            coorddim (tuple(int)):
-                Which coordinate columns to use ((0, 1) by default)
-            valdim (int):
-                Which value column to use for plotting (0 by default)
-        '''
-
-        if coorddims is None:
-            if data.get_ncoordinates() > 2:
-                logging.info('Data object has multiple coordinates, using the first two')
-            coorddims = (0, 1)
-
-        if valdim is None:
-            if data.get_nvalues() > 1:
-                logging.info('Data object has multiple values, using the first one')
-            valdim = data.get_ncoordinates()
-            if valdim < 2:
-                valdim = 2
-
-        Plot.add_data(self, data, coorddims=coorddims, valdim=valdim, **kwargs)
-
-    def add(self, *args, **kwargs):
-        '''
-        Add data object or list / numpy.array to the current plot.
-        '''
-
-        args = _convert_arrays(args)
-        coorddims = kwargs.pop('coorddims', None)
-        valdim = kwargs.pop('valdim', None)
-        globalxy = kwargs.pop('xy', None)
-        globalx = kwargs.pop('x', None)
-        globaly = kwargs.pop('y', None)
-        update = kwargs.pop('update', True)
-        self._process_plot_options(kwargs)
-
-        i = 0
-        while i < len(args):
-
-            # This is easy
-            if isinstance(args[i], Data):
-                data = args[i]
-                i += 1
-
-            elif isinstance(args[i], numpy.ndarray):
-                if len(args[i].shape) == 1:
-                    if globalx is not None and globaly is not None:
-                        z = args[i]
-                        data = numpy.column_stack((globalx, globaly, z))
-                        i += 1
-                    elif globalxy is not None:
-                        z = args[i]
-                        data = numpy.column_stack((globalxy, z))
-                        i += 1
-                    elif i + 2 < len(args) and \
-                            isinstance(args[i+1], numpy.ndarray) and \
-                            isinstance(args[i+2], numpy.ndarray):
-                        x = args[i]
-                        y = args[i + 1]
-                        z = args[i + 2]
-                        data = numpy.column_stack((x, y, z))
-                        i += 3
-                    else:
-                        data = args[i]
-                        i += 1
-
-                elif len(args[i].shape) == 2 and args[i].shape[1] >= 3:
-                    data = args[i]
-                    i += 1
-
-                else:
-                    logging.warning('Unable to plot array of shape %r', \
-                            (args[i].shape))
-                    i += 1
-                    continue
-
-                tmp = self.get_needtempfile()
-                if not self.get_support_binary():
-                    kwargs['binary'] = False
-                elif 'binary' not in kwargs:
-                    kwargs['binary'] = True
-                data = Data(data=data, tempfile=tmp, binary=kwargs['binary'])
-
-            else:
-                logging.warning('Unhandled argument: %r', args[i])
-                i += 1
-                continue
-
-            # data contains a valid data object, add some options and plot it
-            opts = _get_plot_options(i, *args)
-            for key, val in opts.iteritems():
-                kwargs[key] = val
-            i += len(opts)
-
-            self.add_data(data, coorddims=coorddims, valdim=valdim, **kwargs)
-
-        if update:
-            self.update()
+    def save_eps(self, *args, **kwargs):
+      ''' Deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). '''
+      self._pltbr.set_export_eps(True)
+      logging.warn('This function is deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). Arguments ignored: %s, %s', args, kwargs)
 
     def set_labels(self, x='', y='', z='', update=True):
-        '''
-        Set labels in the plot. Use x, y and z if specified, else let the data
-        object create the proper format for each dimensions
-        '''
+      ''' Deprecated. '''
+      logging.warn('This function is deprecated. Use set_default_labels() if you want to set the labels to the names specified in the qt.Data object(s). Otherwise, use get_plot().set_xlabel etc.')
 
-        for datadict in self._data:
-            data = datadict['data']
-            if x == '' and len(datadict['coorddims']) > 0:
-                x = data.format_label(datadict['coorddims'][0])
-            if y == '' and len(datadict['coorddims']) > 1:
-                y = data.format_label(datadict['coorddims'][1])
-            if z == '':
-                z = data.format_label(datadict['valdim'])
 
-        if x == '':
-            x = 'X'
-        self.set_xlabel(x, update=False)
-        if y == '':
-            y = 'Y'
-        self.set_ylabel(y, update=False)
-        if z == '':
-            z = 'Z'
-        self.set_zlabel(z, update=False)
-        self.set_cblabel(z, update=False)
 
-        if update:
-            self.update()
-
-def _get_plot_options(i, *args):
-    if len(args) > i:
-        if type(args[i]) is types.StringType:
-            return {'style': args[i]}
-    return {}
-
-def set_global_plot_options(graph, kwargs):
-    if 'maxtraces' in kwargs:
-        graph.set_maxtraces(kwargs.pop('maxtraces'))
-    if 'maxpoints' in kwargs:
-        graph.set_maxpoints(kwargs.pop('maxpoints'))
+################ Deprecated. ##################
 
 def plot(*args, **kwargs):
-    '''
-    Plot items.
-
-    Variable argument input:
-        Data object(s)
-        numpy array(s), size n x 1 (two n x 1 arrays to represent x and y),
-            or n x 2
-        color string(s), such as 'r', 'g', 'b'
-
-    Keyword argument input:
-        name (string): the plot name to use, defaults to 'plot'
-        coorddim, valdim: specify coordinate and value dimension for Data
-            object.
-        ret (bool): whether to return plot object (default: True).
-    '''
-
-    plotname = kwargs.pop('name', 'plot')
-    ret = kwargs.pop('ret', True)
-    graph = Plot._plot_list[plotname]
-    if graph is None:
-        graph = Plot2D(name=plotname)
-
-    set_global_plot_options(graph, kwargs)
-
-    graph.add(*args, **kwargs)
-
-    if ret:
-        return graph
+  ''' Deprecated. '''
+  logging.warn("This function is deprecated and does nothing. Use plot.get_plot('name of plot') instead.")
 
 def waterfall(*args, **kwargs):
-    '''
-    Create a waterfall plot, e.g. 3D data as offseted 2D lines.
-    '''
-    traceofs = kwargs.get('traceofs', 10)
-    kwargs['traceofs'] = traceofs
-    return plot(*args, **kwargs)
+    ''' Deprecated. '''
+    logging.warn("This function is deprecated and does nothing. Use plot.get_plot('name of plot') and an appropriate template instead.")
 
 def plot3(*args, **kwargs):
-    '''
-    Plot items.
-
-    Variable argument input:
-        Data object(s)
-        numpy array(s), size n x 1 (three n x 1 arrays to represent x, y and
-            z), or n x 3
-        color string(s), such as 'r', 'g', 'b'
-
-    Keyword argument input:
-        name (string): the plot name to use, defaults to 'plot'
-        coorddims, valdim: specify coordinate and value dimensions for Data
-            object.
-        ret (bool): whether to return plot object (default: True).
-    '''
-
-    plotname = kwargs.pop('name', 'plot3d')
-    ret = kwargs.pop('ret', True)
-    graph = Plot._plot_list[plotname]
-    if graph is None:
-        graph = Plot3D(name=plotname)
-
-    set_global_plot_options(graph, kwargs)
-
-    graph.add(*args, **kwargs)
-
-    if ret:
-        return graph
-
-def replot_all():
-    '''
-    replot all plots in the plot-list
-    '''
-    plots = Plot.get_named_list()
-    for p in plots:
-        plots[p].update()
-
-if config.get('plot_type', 'gnuplot') == 'matplotlib':
-    from plot_engines.qtmatplotlib import Plot2D, Plot3D
-else:
-    from plot_engines.qtgnuplot import Plot2D, Plot3D, plot_file
+  ''' Deprecated. '''
+  logging.warn("This function is deprecated and does nothing. Use plot.get_plot('name of plot') instead.")

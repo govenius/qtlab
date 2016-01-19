@@ -28,7 +28,7 @@ _cfg['qtlab'] = True
 
 import types
 from instrument import Instrument
-from lib.misc import exact_time, get_ipython
+from lib.misc import exact_time, get_ipython_backward_compatible
 from lib import temp
 from time import sleep
 
@@ -54,7 +54,8 @@ else:
     logging.info('psyco acceleration not enabled')
 
 import qt
-from qt import plot, plot3, Plot2D, Plot3D, Data
+from qt import Data
+import plot
 
 from numpy import *
 import numpy as np
@@ -82,7 +83,7 @@ try:
     import qtflow
     # Note: This does not seem to work for 'KeyboardInterrupt',
     # likely it is already caught by ipython itself.
-    get_ipython().set_custom_exc((Exception, ), qtflow.exception_handler)
+    get_ipython_backward_compatible().set_custom_exc((Exception, ), qtflow.exception_handler)
 except Exception, e:
     print 'Error: %s' % str(e)
 

@@ -37,7 +37,7 @@ class Tektronix_AFG3252(Instrument):
     Usage:
     Initialize with
     <name> = instruments.create('name', 'Tektronix_AFG3252', address='<GPIB address>',
-        reset=<bool>, numpoints=<int>)
+        reset=<bool>)
 
     think about:    clock, waveform length
 
@@ -48,7 +48,7 @@ class Tektronix_AFG3252(Instrument):
     4) Add 4-channel compatibility
     '''
 
-    def __init__(self, name, address, reset=False, clock=1e9, numpoints=1000):
+    def __init__(self, name, address, reset=False):
         '''
         Initializes the AFG3252.
 
@@ -56,7 +56,6 @@ class Tektronix_AFG3252(Instrument):
             name (string)    : name of the instrument
             address (string) : GPIB address
             reset (bool)     : resets to default values, default=false
-            numpoints (int)  : sets the number of datapoints
 
         Output:
             None
@@ -67,13 +66,9 @@ class Tektronix_AFG3252(Instrument):
 
         self._address = address
         self._visainstrument = visa.instrument(self._address)
-        self._values = {}
-        self._values['files'] = {}
-        self._clock = clock
-        self._numpoints = numpoints
 
         # Add parameters
-        self.add_parameter('output', type=types.FloatType,
+        self.add_parameter('output', type=types.BooleanType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
             channels=(1, 2), channel_prefix='ch%d_')
 
@@ -81,30 +76,37 @@ class Tektronix_AFG3252(Instrument):
             flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.StringType, format_map = {
                 "INT" : "internal",
                 "EXT" : "external"}) 
-            
-        self.add_parameter('clock', type=types.FloatType,
-            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
-            minval=1e6, maxval=1e9, units='Hz')
 
-        self.add_parameter('amplitude', type=types.FloatType,
+        self.add_parameter('amplitude', format='%.09e', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
             channels=(1, 2), minval=0, maxval=5., units='V', channel_prefix='ch%d_')
 
-        self.add_parameter('offset', type=types.FloatType,
+        self.add_parameter('offset', format='%.09e', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
             channels=(1, 2), minval=-2, maxval=2, units='V', channel_prefix='ch%d_')
 
-        self.add_parameter('frequency', type=types.FloatType,
+        self.add_parameter('frequency', format='%.09e', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
             channels=(1, 2), minval=1E-6, maxval=240E6, units='Hz', channel_prefix='ch%d_')
+
+        self.add_parameter('frequencies_force_equal', type=types.BooleanType,
+            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
+        
+        self.add_parameter('pulse_width', format='%.09e', type=types.FloatType,
+            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+            channels=(1, 2), minval=0, units='s', channel_prefix='ch%d_')
+        
+        self.add_parameter('pulse_delay', format='%.09e', type=types.FloatType,
+            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+            channels=(1, 2), minval=0, units='s', channel_prefix='ch%d_')
 
         self.add_parameter('load_impedance', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
             channels=(1, 2), minval=1, units='Ohm', channel_prefix='ch%d_')
 
-        self.add_parameter('phase', type=types.FloatType,
+        self.add_parameter('phase', format='%.09e', type=types.FloatType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
-            channels=(1, 2), minval=0, maxval=6.283, units='rad', channel_prefix='ch%d_')
+            channels=(1, 2), minval=-np.pi, maxval=np.pi, units='rad', channel_prefix='ch%d_')
 
         self.add_parameter('shape', type=types.StringType,
             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
@@ -135,10 +137,29 @@ class Tektronix_AFG3252(Instrument):
         self.add_parameter('polarity', type=types.StringType, flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET, channels=(1, 2),channel_prefix='ch%d_', format_map={"INV" : "inverted","NORM" : "normal"}
 )
 
-      
+        self.add_parameter('burst_enabled', type=types.BooleanType, channels=(1, 2),channel_prefix='ch%d_',
+            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
 
+        self.add_parameter('burst_mode', type=types.StringType, channels=(1, 2),channel_prefix='ch%d_',
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+                           format_map={"TRIG" : "triggered", "GAT" : "gated"})
 
-       
+        self.add_parameter('burst_ncycles', type=types.IntType, channels=(1, 2),channel_prefix='ch%d_',
+                           minval=0,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
+
+        self.add_parameter('burst_delay', type=types.FloatType, channels=(1, 2),channel_prefix='ch%d_',
+                           minval=0, maxval=85.,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
+
+        self.add_parameter('trigger_source', type=types.StringType,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+                           format_map={"TIM" : "internal timer", "EXT" : "external"})
+
+        self.add_parameter('trigger_slope', type=types.StringType,
+                           flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+                           format_map={"POS" : "positive", "NEG" : "negative"})
+
         # Add functions
         self.add_function('reset')
         self.add_function('get_all')
@@ -148,6 +169,13 @@ class Tektronix_AFG3252(Instrument):
         self.add_function('set_ch1_waveform')
         self.add_function('set_ch2_waveform')
         self.add_function('phase_sync')
+        
+        if not reset:
+          self.get_all()
+        else:
+          self.reset()
+        
+        
     # Functions
     def reset(self):
         '''
@@ -161,6 +189,7 @@ class Tektronix_AFG3252(Instrument):
         '''
         logging.info(__name__ + ' : Resetting instrument')
         self._visainstrument.write('*RST')
+        self.get_all()
 
     def get_all(self):
         '''
@@ -174,15 +203,18 @@ class Tektronix_AFG3252(Instrument):
             None
         '''
         logging.info(__name__ + ' : Reading all data from instrument')
-        logging.warning(__name__ + ' : get all not yet fully functional')
 
-        self.get_clock()
         self.get_ref_clock_mode()
+        self.get_frequencies_force_equal()
+        self.get_trigger_source()
+        self.get_trigger_slope()
 
         for i in range(1,3):
             self.get('ch%d_amplitude' % i)
             self.get('ch%d_offset' % i)
             self.get('ch%d_frequency' % i)
+            self.get('ch%d_pulse_width' % i)
+            self.get('ch%d_pulse_delay' % i)
             self.get('ch%d_shape' % i)
             self.get('ch%d_waveform_data' % i)
             self.get('ch%d_polarity' % i)
@@ -190,6 +222,10 @@ class Tektronix_AFG3252(Instrument):
             self.get('ch%d_polarity' % i)
             self.get('ch%d_load_impedance' % i)
             self.get('ch%d_phase' % i)
+            self.get('ch%d_burst_enabled' % i)
+            self.get('ch%d_burst_mode' % i)
+            self.get('ch%d_burst_ncycles' % i)
+            self.get('ch%d_burst_delay' % i)
 
     def clear_waveforms(self):
         '''
@@ -233,10 +269,7 @@ class Tektronix_AFG3252(Instrument):
             None
         '''
         logging.debug(__name__ + ' : Set channel output state')
-        if (state == 1):
-            self._visainstrument.write('OUTP%s:STAT ON' % channel)
-        if (state == 0):
-            self._visainstrument.write('OUTP%s:STAT OFF' % channel)
+        self._visainstrument.write('OUTP%s:STAT %s' % (channel, 'ON' if state else 'OFF'))
 
     def do_get_output(self, channel):
         '''
@@ -248,38 +281,10 @@ class Tektronix_AFG3252(Instrument):
             state (int) : on (1) or off (0)
         '''
         logging.debug(__name__ + ' : Get channel output state')
-        return self._visainstrument.ask('OUTP%s:STAT?' % channel)
+        return self._visainstrument.ask('OUTP%s:STAT?' % channel).strip() in ['1', 'ON']
     
 
     # Parameters
-    def do_get_clock(self):
-        '''
-        Returns the clockfrequency, which is the rate at which the datapoints are
-        sent to the designated output
-
-        Input:
-            None
-
-        Output:
-            clock (int) : frequency in Hz
-        '''
-        return self._clock
-
-    def do_set_clock(self, clock):
-        '''
-        Sets the rate at which the datapoints are sent to the designated output channel
-
-        Input:
-            clock (int) : frequency in Hz
-
-        Output:
-            None
-        '''
-        logging.warning(__name__ + ' : Clock set to %s. This is not fully functional yet. To avoid problems, it is better not to change the clock during operation' % clock)
-        self._clock = clock
-        self._visainstrument.write('SOUR:FREQ %f' % clock)
-
-
 
     def do_get_amplitude(self, channel):
         '''
@@ -310,9 +315,9 @@ class Tektronix_AFG3252(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : Set amplitude of channel %s to %.6f'
+        logging.debug(__name__ + ' : Set amplitude of channel %s to %.6e'
             % (channel, amp))
-        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:AMPL %.6f' % (channel, 2*amp))
+        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:AMPL %.6e' % (channel, 2*amp))
 
 
     def do_get_phase(self, channel):
@@ -325,7 +330,7 @@ class Tektronix_AFG3252(Instrument):
         Output:
             amplitude (float) : the amplitude of the signal in Volts
         '''
-        logging.debug(__name__ + ' : Get amplitude of channel %s from instrument'
+        logging.debug(__name__ + ' : Get phase of channel %s from instrument'
             % channel)
         return float(self._visainstrument.ask('SOURCE%s:PHASE:ADJUST?' % channel))
 
@@ -342,11 +347,9 @@ class Tektronix_AFG3252(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : Set phase of channel %s to %.6f rad.'
-            % (channel, phase))
-        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6f' % (channel, phase))
-
-
+        logging.debug(__name__ + ' : Set phase of channel %s to %.6e rad.'
+                      % (channel, phase))
+        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6e' % (channel, phase))
 
     def do_get_offset(self, channel):
         '''
@@ -372,8 +375,8 @@ class Tektronix_AFG3252(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : Set offset of channel %s to %.6f' % (channel, offset))
-        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:OFFS %.6f' % (channel, offset))
+        logging.debug(__name__ + ' : Set offset of channel %s to %.6e' % (channel, offset))
+        self._visainstrument.write('SOUR%s:VOLT:LEV:IMM:OFFS %.6e' % (channel, offset))
 
 
     def do_get_frequency(self, channel):
@@ -386,7 +389,7 @@ class Tektronix_AFG3252(Instrument):
         Output:
             offset (float) : offset of designated channel in Volts
         '''
-        logging.debug(__name__ + ' : Get offset of channel %s' % channel)
+        logging.debug(__name__ + ' : Get frequency of channel %s' % channel)
         return float(self._visainstrument.ask('SOUR%s:FREQ?' % channel))
 
     def do_set_frequency(self, frequency, channel):
@@ -400,11 +403,92 @@ class Tektronix_AFG3252(Instrument):
         Output:
             None
         '''
-        logging.debug(__name__ + ' : Set offset of channel %s to %.6f' % (channel, frequency))
-        self._visainstrument.write('SOUR%s:FREQ %.6f' % (channel, frequency))
+        logging.debug(__name__ + ' : Set frequency of channel %s to %.11e' % (channel, frequency))
+
+        # from the manual: resolution is 1 uHz or 12 digits
+        rounded = '%.11e' % np.round(frequency,decimals=6)
+        if np.abs(float(rounded) - frequency) > np.finfo(np.float).tiny:
+          logging.warn('Rounding the requested frequency (%.15e Hz) to %s Hz (i.e. by %.6e Hz).' % (frequency, rounded, float(rounded) - frequency))
+
+        self._visainstrument.write('SOUR%s:FREQ %s' % (channel, rounded))
+
+        # both freqs can change if the channel frequencies are set to "concurrent"
+        self.get_ch1_frequency()
+        self.get_ch2_frequency()
 
 
+    def do_get_frequencies_force_equal(self):
+        '''
+        Whether both channels to have to have the same frequency.
+        '''
+        return bool(int(self._visainstrument.ask(':FREQ:CONC?')))
+    def do_set_frequencies_force_equal(self, val):
+        '''
+        Forces both channels to have the same frequency.
+        '''
+        self._visainstrument.write(':FREQ:CONC %d' % (1 if val else 0))
 
+    def do_get_pulse_width(self, channel):
+        '''
+        Reads the pulse width when shape is set to 'PULS'.
+
+        Input:
+            channel (int) : 1 or 2, the number of the designated channel
+
+        Output:
+            width (float) : width in s
+        '''
+        logging.debug(__name__ + ' : Get pulse width of channel %s' % channel)
+        return float(self._visainstrument.ask('SOUR%s:PULS:WIDT?' % channel))
+
+    def do_set_pulse_width(self, width, channel):
+        '''
+        Sets the pulse width when shape is set to 'PULS'.
+
+        Input:
+            width (float) : width in s
+            channel (int)  : 1 or 2, the number of the designated channel
+
+        Output:
+            None
+        '''
+        logging.debug(__name__ + ' : Set pulse width of channel %s to %.6f' % (channel, width))
+        f = self.get('ch%d_frequency' % channel)
+        duty = f*width
+        if not (duty > 1e-5 and duty < 1-1e-5):
+          logging.warn('The duty cycle of the pulse waveform must be between 0.001\% and 99.999\%, not %g.' % duty)
+        self._visainstrument.write('SOUR%s:PULS:WIDT %.6e' % (channel, width))
+
+    def do_get_pulse_delay(self, channel):
+        '''
+        Reads the pulse delay when shape is set to 'PULS'.
+
+        Input:
+            channel (int) : 1 or 2, the number of the designated channel
+
+        Output:
+            delay (float) : delay in s
+        '''
+        logging.debug(__name__ + ' : Get pulse delay of channel %s' % channel)
+        return float(self._visainstrument.ask('SOUR%s:PULS:DEL?' % channel))
+
+    def do_set_pulse_delay(self, delay, channel):
+        '''
+        Sets the pulse delay when shape is set to 'PULS'.
+
+        Input:
+            delay (float) : delay in s
+            channel (int)  : 1 or 2, the number of the designated channel
+
+        Output:
+            None
+        '''
+        logging.debug(__name__ + ' : Set pulse delay of channel %s to %.6f' % (channel, delay))
+        f = self.get('ch%d_frequency' % channel)
+        w = self.get('ch%d_pulse_width' % channel)
+        if delay + w > 1./f: logging.warn('AFG ch%d delay + pulse width is more (%g s) than the period of the waveform (%g s).' % (delay+w, 1./f))
+        self._visainstrument.write('SOUR%s:PULS:DEL %.6e' % (channel, delay))
+        
     def do_get_load_impedance(self, channel):
         '''
         Reads the output impedance of channel 1 or 2.
@@ -414,7 +498,7 @@ class Tektronix_AFG3252(Instrument):
         Output:
             output impedance (float) : impedance in Ohm.
         '''
-        logging.debug(__name__ + ' : Get offset of channel %s' % channel)
+        logging.debug(__name__ + ' : Get load impedance of channel %s' % channel)
         return float(self._visainstrument.ask('OUTP%s:IMP?' % channel))
 
 
@@ -435,7 +519,7 @@ class Tektronix_AFG3252(Instrument):
         if impedance > 1e4 and impedance < np.inf:
           logging.warn('%.3e Ohm load impedance not supported. Assuming you meant infinite load impedance. Use np.inf if you want to avoid this message.')
         
-        logging.debug(__name__ + ' : Set offset of channel %s to %s' % (channel, imp))
+        logging.debug(__name__ + ' : Set load impedance of channel %s to %s' % (channel, imp))
         self._visainstrument.write('OUTP%s:IMP %s' % (channel, imp))
 
 
@@ -657,6 +741,97 @@ class Tektronix_AFG3252(Instrument):
             self._visainstrument.write('OUTP%s:POL NORM' % channel)
         if (state == 'INV'):
             self._visainstrument.write('OUTP%s:POL INV' % channel)
+
+    def do_set_burst_enabled(self, val, channel):
+        '''
+        Whether the burst mode is enabled at all.
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst enabled to %s', channel, val)
+        self._visainstrument.write('SOUR%s:BURS:STAT %s' % (channel, 'ON' if val else 'OFF'))
+
+    def do_get_burst_enabled(self, channel):
+        '''
+        Whether the burst mode is enabled at all.
+        '''
+        logging.debug(__name__ + ' : Get channel %s ', channel)
+        return self._visainstrument.ask('SOUR%s:BURS:STAT?' % channel).strip().upper() in ['1', 'ON']
+
+    def do_set_burst_mode(self, val, channel):
+        '''
+        Whether to trigger or gate the output.
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst mode to %s', channel, val)
+        self._visainstrument.write('SOUR%s:BURS:MODE %s' % (channel,
+                                                            {'tri': 'TRIG', 'gat': 'GAT'}[val.lower()[:3]]))
+
+    def do_get_burst_mode(self, channel):
+        '''
+        Whether to trigger or gate the output.
+        '''
+        logging.debug(__name__ + ' : Get channel %s burst mode', channel)
+        return self._visainstrument.ask('SOUR%s:BURS:MODE?' % channel).strip().upper()
+
+    def do_set_burst_ncycles(self, val, channel):
+        '''
+        The the number of cycles for the burst mode.
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst cycles to %s', channel, val)
+        self._visainstrument.write('SOUR%s:BURS:NCYC %s' % (channel, val))
+
+    def do_get_burst_ncycles(self, channel):
+        '''
+        The the number of cycles for the burst mode.
+        '''
+        logging.debug(__name__ + ' : Get channel %s burst cycles', channel)
+        return int(float(self._visainstrument.ask('SOUR%s:BURS:NCYC?' % channel)))
+
+    def do_set_burst_delay(self, val, channel):
+        '''
+        Time delay for the burst mode
+        '''
+        logging.debug(__name__ + ' : Set channel %s burst delay to %s', channel, val)
+
+        # from the manual: resolution is 100 ps or 12 digits
+        rounded = '%.4e' % np.round(val, decimals=10)
+        if np.abs(float(rounded) - val) > np.finfo(np.float).tiny:
+          logging.warn('Rounding the requested value (%.15e s) to %s s (i.e. by %.6e s).' % (val, rounded, float(rounded) - val))
+
+        self._visainstrument.write('SOUR%s:BURS:TDEL %s' % (channel, rounded))
+
+    def do_get_burst_delay(self, channel):
+        '''
+        Time delay for the burst mode
+        '''
+        logging.debug(__name__ + ' : Get channel %s burst delay', channel)
+        return self._visainstrument.ask('SOUR%s:BURS:TDEL?' % channel)
+
+    def do_set_trigger_source(self, val):
+        '''
+        Whether to trigger from an external source or an internal times.
+        '''
+        logging.debug(__name__ + ' : Set trigger source to %s', val)
+        self._visainstrument.write('TRIG:SOUR %s' % ({'int': 'INT', 'ext': 'EXT'}[val.lower()[:3]]))
+
+    def do_get_trigger_source(self):
+        '''
+        Whether to trigger from an external source or an internal times.
+        '''
+        logging.debug(__name__ + ' : Get the trigger source')
+        return self._visainstrument.ask('TRIG:SOUR?').strip().upper()
+
+    def do_set_trigger_slope(self, val):
+        '''
+        Trigger on positive or negative edge.
+        '''
+        logging.debug(__name__ + ' : Set trigger slope to %s', val)
+        self._visainstrument.write('TRIG:SLOP %s' % ({'pos': 'POS', 'neg': 'NEG'}[val.lower()[:3]]))
+
+    def do_get_trigger_slope(self):
+        '''
+        Trigger on positive or negative edge.
+        '''
+        logging.debug(__name__ + ' : Get the trigger slope')
+        return self._visainstrument.ask('TRIG:SLOP?').strip().upper()
 
 # self._visainstrument.write('OUTP%s:POL %s' % (channel, polarity))
 

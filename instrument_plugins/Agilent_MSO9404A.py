@@ -124,7 +124,7 @@ class Agilent_MSO9404A(Instrument):
 
         # 'Channel' parameters 
         self.add_parameter('vertical_range',
-            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, channels=(1, 4), units='unit', minval=0.001, maxval=10., 
+            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, channels=(1, 4), units='unit', minval=0.001, 
                            type=types.FloatType, channel_prefix='ch%d_')
 
         self.add_parameter('vertical_scale',
@@ -132,7 +132,7 @@ class Agilent_MSO9404A(Instrument):
                            type=types.FloatType, channel_prefix='ch%d_')
 
         self.add_parameter('vertical_offset',
-            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, channels=(1, 4), units='unit', minval=0, maxval=10, 
+            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, channels=(1, 4), units='unit', minval=-10, maxval=10, 
                            type=types.FloatType, channel_prefix='ch%d_')
 
         self.add_parameter('vertical_label',
@@ -186,7 +186,7 @@ class Agilent_MSO9404A(Instrument):
             channel_prefix='ch%d_', format_map={"HIGH" : "high","LOW" : "low","DONT" : "don't care"})
 
         self.add_parameter('trigger_level',
-            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, channels=(1, 4), units='current unit', minval=-0.8, maxval=0.8, 
+            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, channels=(1, 4), units='current unit', minval=-5., maxval=5., 
                            type=types.FloatType, channel_prefix='ch%d_')
 
 ##----------------------------- edge trigger parameters p.839 --------------------
@@ -354,27 +354,32 @@ class Agilent_MSO9404A(Instrument):
 
           avg_count = 0
           
-          for wait_attempt in range(5):
+          for wait_attempt in range(8):
             # get the data from the scope
             try:
               # make sure scope digitize has actually completed
-              if wait_attempt == 0:
-                extra_sleep_factor = 1.
-              else:
-                extra_sleep_factor = 2 if avg_count == 0 else (1.1 * target_avg_count / float(avg_count))
               
-              sleeping = .5 + 1.15*total_duration*(target_avg_count - avg_count) * extra_sleep_factor
-              logging.debug('Expecting measurement to be done in %g seconds. Sleeping until then.' % sleeping)
+              fraction_acquired = avg_count / float(target_avg_count)
+              if avg_count < 10 and fraction_acquired < 0.1:
+                sleeping = .5 + target_avg_count*total_duration + (wait_attempt) * max(target_avg_count*total_duration, 2.)
+              else:
+                time_spent = time.time() - start_time
+                time_left = time_spent/fraction_acquired * (target_avg_count-avg_count)/float(target_avg_count)
+                sleeping = 1.*wait_attempt + time_left
+              logging.debug('%d/%d averages acquired. Expecting measurement to be done in %g seconds.' % (avg_count, target_avg_count, sleeping))
               qt.msleep( sleeping )
 
               avg_count = self.get_waveform_count()
               complete = (avg_count >= target_avg_count)
-              if not complete: raise Exception( 'Acquisition taking longer (already %g s) than expected (%g s).' % (time.time() - start_time, total_duration*target_avg_count) )
+              if not complete: raise Exception( 'Acquisition taking longer (already %g s) than expected (%g s). %d/%d averages acquired.'
+                                                % (time.time() - start_time,
+                                                  total_duration*target_avg_count,
+                                                  avg_count, target_avg_count))
               self.stop()
               break
 
             except Exception as e:
-              if str(e) == 'Human abort': raise e
+              if str(e) == 'Human abort': raise
               if wait_attempt > 0:
                 logging.warn('Sleeping more... Exception was: %s' % str(e)) 
               else:
@@ -429,7 +434,10 @@ class Agilent_MSO9404A(Instrument):
                 smooth_wav = wavs[i]
               
               # resample
-              wavs[i] = interpolate.interp1d(scope_time_axis, smooth_wav, kind='linear')(new_time_axis)
+              wavs[i] = interpolate.interp1d(scope_time_axis, smooth_wav, kind='linear',
+                                             bounds_error=False, fill_value=np.nan)(new_time_axis)
+              invalid_pts = np.isnan(wavs[i]).sum()
+              assert invalid_pts <= 0.05*target_no_of_pts, 'The digitized duration was much too short %d out of %d points invalid.' % (invalid_pts, target_no_of_pts)
               
               logging.debug("Resamples channel %s waveform from %d to %d pts." % (channels[i], returned_no_of_pts, len(wavs[i])))
 

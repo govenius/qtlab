@@ -24,6 +24,7 @@ import numpy as np
 import struct
 import time
 import qt
+from collections import OrderedDict
 
 class Agilent_N9928A(Instrument):
     '''
@@ -68,7 +69,7 @@ class Agilent_N9928A(Instrument):
             flags=Instrument.FLAG_GETSET, minval=30E3, maxval=26.5E9, units = 'Hz', type=types.FloatType)
 
         self.add_parameter('frequency_span',
-            flags=Instrument.FLAG_GETSET, minval=30E3, maxval=26.5E9, units = 'Hz', type=types.FloatType)
+            flags=Instrument.FLAG_GETSET, minval=1, maxval=26.5E9, units = 'Hz', type=types.FloatType)
 
         self.add_parameter('IF_bandwidth',
             flags=Instrument.FLAG_GETSET, minval=10, maxval=30E3, units = 'Hz', type=types.FloatType)
@@ -220,12 +221,16 @@ class Agilent_N9928A(Instrument):
           # measure the time it took to complete the loop
           t0 = t1
           t1 = time.time()
-
-          # sleep until the sweep is almost done
-          if i>0:
-            qt.msleep((t1 - t0) * 0.9)
           
-          self.single(block_until_done = True)
+          self.single(block_until_done = False)
+
+          if i>0:
+            # sleep until the sweep is almost done
+            sleeping = np.max(( 0., (t1 - t0) - 10. ))
+            logging.debug('Sleeping %.2e seconds before asking for OPC.' % sleeping)
+            qt.msleep(sleeping)
+
+          self.block_until_operation_complete()
 
           if i==0 and autoscale_after_first_sweep:
             for j in range(4): self.autoscale(1+j)
@@ -261,6 +266,7 @@ class Agilent_N9928A(Instrument):
         '''
         logging.debug(__name__ + 'Do a single sweep and %swait for the command to be completed.' % ('' if block_until_done else 'DO NOT '))
         self._visainstrument.write('INIT:IMM')
+        qt.msleep(5.)
         if block_until_done: self.block_until_operation_complete()
 
     def block_until_operation_complete(self):
@@ -612,7 +618,27 @@ class Agilent_N9928A(Instrument):
         logging.debug(__name__ + 'Setting the stop frequency to %f. Hz' % freq)
         self._visainstrument.write('FREQ:SPAN %f' % freq)
 
-		
+    def get_number_of_traces(self):
+        '''
+        Return the number of traces currently enabled.
+        '''
+        return {'D1': 1, 'D2': 2, 'D12H': 2, 'D1123': 3, 'D12_34': 4, 'D1234': 4}[self.get_multi_trace()]
+
+    def get_s_parameters_on_screen(self, sparams=None):
+        '''
+        Return all traces on screen as {'S11': np.array(...), 'S21': ...}
+        If sparams == None, all traces on screen will be returned. Otherwise, only the specified ones (e.g. 'S11').
+        '''
+        all_traces = OrderedDict()
+        for i in range(1,1 + self.get_number_of_traces()):
+          par = self.get('ch%d_current_measurement' % i)
+          if sparams == None or par in sparams: all_traces[par] = self.get_data(i)
+
+        if sparams != None and len(all_traces) != len(sparams):
+          logging.warn('Fewer traces returned (%s) than requested (%s).', all_traces.keys(), sparams)
+
+        return all_traces
+
     def get_all(self):
         '''
         Reads all implemented parameters from the instrument,
@@ -640,23 +666,9 @@ class Agilent_N9928A(Instrument):
         self.get_source_power_mode()
 
         # Get the measurement and smoothing parameters for the windows on the screen.
-        window_config  = self.get_multi_trace()
-        if window_config == 'D1':
-          for i in range(1,2):
-            self.get('ch%d_smoothing_mode' % i)
-            self.get('ch%d_current_measurement' % i)       
-        elif window_config in ['D2', 'D12H']:
-          for i in range(1,3):
-            self.get('ch%d_smoothing_mode' % i)
-            self.get('ch%d_current_measurement' % i)
-        elif window_config == 'D1123':
-          for i in range(1,4):
-            self.get('ch%d_smoothing_mode' % i)
-            self.get('ch%d_current_measurement' % i)
-        elif window_config == 'D12_34':
-          for i in range(1,5):
-            self.get('ch%d_smoothing_mode' % i)
-            self.get('ch%d_current_measurement' % i)
+        for i in range(1,1 + self.get_number_of_traces()):
+          self.get('ch%d_smoothing_mode' % i)
+          self.get('ch%d_current_measurement' % i)
                    
     def do_get_operating_mode(self):
         '''
@@ -783,6 +795,17 @@ class Agilent_N9928A(Instrument):
         '''
         Set the current measurement.  Options depend on which mode (CAT, NA, VVM) is currently selected.
         If param/chan is 2,3,4 then an appropriate multitrace configuration must be created first.
+        For NA Mode:
+
+        Reverse measurements are available ONLY with full S-parameter option.
+        S11 - Forward reflection measurement
+        S21 - Forward transmission measurement
+        S12 - Reverse transmission
+        S22 - Reverse reflection
+        A - A receiver measurement
+        B - B receiver measurement
+        R1 - Port 1 reference receiver measurement
+        R2 - Port 2 reference receiver measurement
 
         Input:
             len (int) : 

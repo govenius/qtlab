@@ -106,7 +106,7 @@ that are present in the real instrument object by default are not shown when
 typing ins.<tab> in IPython. If you ever need to access the real instrument
 object, you can use the '_ins' property (e.g. dmm1._ins).
 
-2.1.2. Writing an instrument
+2.1.2. Writing an instrument driver
 There are many instrument drivers available in the standard distribution. They
 are quite good examples of most features.
 
@@ -211,32 +211,29 @@ when adding the Data object to a plot.
 To visualize data several plot classes are included. There is currently only
 one back-end: gnuplot.
 
-A plot can be created by calling 'plot' (for line plots) or 'plot3' (for
-surface / image plots). You can simply pass it a Data object or filename:
+Some basic examples:
 
-    p = plot3('test.dat')
+    import plot
+    x = np.arange(-5,5,0.1)
+    p = plot.get_plot('my test plot') # name of your plot
+    p.get_plot().add_trace(x, np.sin(x))
+    p.get_plot().add_trace(x, np.sin(x+0.2))
+    p.update()
+    #p.run() # needed if you've closed the plot window
 
 or
 
+    import plot
     d = Data('test.dat')
-    p = plot3(d)
+    p = plot.get_plot('my data plot')
+    p.add_data(d)
+    p.update()
+    #p.run() # needed if you've closed the plot window
 
-It's also possible to pass data arrays directly:
-
-    plot([[1,1],[2,4],[3,9],[4,16]], name='myplot')
-
-or
-
-    plot([1,2,3,4], [1,4,9, 16], name='myplot')
-
-Here the 'name' option selects the plot with name 'myplot' (by default the
-plot with name 'plot' (2D) or 'plot3' (3D) is selected).
+For more examples, see examples/plots.py.
 
 Of course more optional arguments are available, see the examples and the
-documentation for 'plot' and 'plot3' for more info.
-
-Alternatively the object oriented interface to plotting could be used, e.g.
-using the Plot2D and Plot3D classes directly.
+documentation for 'plot' and 'Plot' for more info.
 
 2.4. Finding a Data, Plot or Window object
 The Data, Plot and QTWindow classes store a list of instances inside them.
@@ -245,24 +242,13 @@ easier to access these lists directly in the qt module. You can see their
 contents easily by typing their name in the IPython shell:
 
     qt.data
-    qt.plots
+    qt.get_plots()
     qt.windows
 
 Getting an item from the list works as follows:
 
-    p = qt.plots['plot1']
-
-A new item is created by instantiating the related class, so just entering
-
-    Plot3D()
-
-will create a new item, automatically called 'plot<n>'. If you would like to
-specify a different name, use
-
-    Plot3D(name='myplot')
-
-However, in the case of plots it is easier to use the above-mentioned 'plot'
-and 'plot3' functions, which will automatically create new plot objects.
+    p = plot.get_plot('plot1')
+    d = qt.data('data1')
 
 3. Extensions to QT Lab
 Extensions to QT lab are easy to write. This code should normally be placed

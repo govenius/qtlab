@@ -1,7 +1,7 @@
 import numpy as np
 import qt
 
-d = qt.Data()
+d = qt.Data(name='test_data')
 d.add_coordinate('X')
 d.add_value('Y')
 d.create_file()

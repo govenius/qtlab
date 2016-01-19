@@ -1,5 +1,5 @@
 # bluefors_log_writer.py class, for writing temperature log files in the Bluefors format
-# Joonas Govenius <joonas.goveius@aalto.fi>, 2013
+# Joonas Govenius <joonas.govenius@aalto.fi>, 2013
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,11 +21,7 @@ from dateutil import tz
 import os
 import logging
 
-def write(quantity, channel, value, address='K:'):
-
-  if quantity not in ['kelvin', 'resistance']:
-    logging.warn('Logging "%s" not implemented!' % quantity)
-    return
+def write(quantity, channel, value, address='D:/bluefors_logs'):
 
   def __time_to_datestr(t): return '{0}-{1:02d}-{2:02d}'.format(str(t.year)[-2:], t.month, t.day)
 
@@ -41,7 +37,14 @@ def write(quantity, channel, value, address='K:'):
     logging.exception('Failed to write %s%s value %g because "%s" could not be accessed/created.' % (quantity, channel, value, target_dir))
     raise
   
-  fname = os.path.join(target_dir, 'CH{0} {1} {2}.log'.format(channel, {'kelvin': 'T', 'resistance': 'R'}[quantity], datestr))
+  if quantity in ['kelvin', 'resistance']:
+    fname = os.path.join(target_dir, 'CH{0} {1} {2}.log'.format(channel, {'kelvin': 'T',
+                                                                          'resistance': 'R'
+                                                                          }[quantity], datestr))
+  else:
+    fname = os.path.join(target_dir, '{0} {1} {2}.log'.format(channel, quantity, datestr))
+
+  
   try:
     with open(fname,'a') as f:
       f.write(tt.strftime('%d-%m-%y,%H:%M:%S,') + ("%.6E\n" % value))

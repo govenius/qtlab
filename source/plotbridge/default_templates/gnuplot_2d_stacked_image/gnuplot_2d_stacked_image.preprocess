@@ -1,0 +1,146 @@
+#!/usr/bin/python
+
+#
+# Combine all of the trace data files into a single matrix
+# so that it's easy to plot it in gnuplot "with image".
+#
+
+import os
+import sys
+import time
+import logging
+import numpy as np
+import struct
+import shutil
+import uuid
+import re
+from scipy import interpolate
+
+# Collect all traces
+all_traces = []
+for f in os.listdir('.'):
+  if f.startswith('trace_') and f.endswith('.npy'):
+    try:
+      # This assumes float data type and 2 column format!!!
+      trace_data = np.fromfile(f).reshape((-1,2))
+      if len(trace_data) > 0:
+        all_traces.append({ 'fname': f,
+                            'trace_data': trace_data,
+                            'mtime': os.path.getmtime(f) })
+    except:
+      logging.exception('Failed to load %s', f)
+      raise
+
+#if len(all_traces) == 1:
+#  # duplicate the trace if there is exactly one, otherwise nothing is plotted...
+#  all_traces.append(dict( (k,v) for k,v in all_traces[0].iteritems() ))
+
+# Attempt to read slow-axis values from the plot script
+plot_script = None
+for f in os.listdir('.'):
+  if f.endswith('.gnuplot'):
+    plot_script = f
+    break
+if plot_script != None:
+  fname_to_index = dict( (t['fname'], i) for i,t in enumerate(all_traces) )
+  with open(plot_script, 'r') as f:
+    line = f.readline()
+    while line:
+      m = re.search(r'^#\s*(trace_.*\.npy)\s+slowcoord\s*=\s*(.+)$',  line)
+      if m and len(m.groups()) == 2:
+        try: all_traces[fname_to_index[m.group(1)]]['slowcoord'] = float(m.group(2))
+        except: logging.exception('could not parse slow coordinate')
+      line = f.readline()
+
+# Use parsed values if all traces have one
+# and they are all different.
+ntraces_with_slow_coord = np.sum([ 'slowcoord' in t.keys() for t in all_traces ])
+unique_slow_coords = len(np.unique([ t['slowcoord'] for t in all_traces if 'slowcoord' in t.keys() ]))
+if ntraces_with_slow_coord != len(all_traces) or unique_slow_coords != len(all_traces):
+  # otherwise fall back to ordering my modification time (and using trace index as slow coordinate)
+  all_traces = sorted(all_traces, key=lambda t: t['mtime'])
+  for i in range(len(all_traces)): all_traces[i]['slowcoord'] = i
+  if ntraces_with_slow_coord > 0:
+    if ntraces_with_slow_coord != len(all_traces):
+      logging.warn('Only %d of %d traces have a slow coordinate specified. Falling back to trace number.',
+                   ntraces_with_slow_coord, len(all_traces) )
+    if unique_slow_coords != len(all_traces):
+      logging.warn('Only %d of %d slow coordinates are unique. Falling back to trace number.',
+                   unique_slow_coords, len(all_traces) )
+
+# Sort the traces by slow value
+all_traces = sorted(all_traces, key=lambda t: t['slowcoord'])
+
+x_min = min( t['trace_data'][:,0].min() for t in all_traces )
+x_max = max( t['trace_data'][:,0].max() for t in all_traces )
+
+# Figure out the smallest division dx in the x direction,
+def smallest_division(trace_data):
+  if len(trace_data) < 2: return np.inf
+  a = np.abs(np.diff(trace_data[:,0]))
+  return a[a>0].min()
+
+dx = min( smallest_division(t['trace_data']) for t in all_traces )
+if not np.isfinite(dx): dx = 1.  # This should only happen if all traces have just a single point.
+
+# Use it as the fundamental pixel width "dx" in the image
+# Figure out how many columns that implies
+ncols = 1 + int(np.ceil( (x_max - x_min) / dx ))
+
+# Allocate the "image" matrix for storing all traces.
+img = np.zeros((2*len(all_traces), ncols), dtype=np.float) + np.nan
+logging.info('Output image size: %s', img.shape)
+
+# Fill it with the nearest value (in x) for each pixel.
+# Leave parts outside the domain of each trace as np.nan
+for i,t in enumerate(all_traces):
+  sorted_trace = t['trace_data'][ t['trace_data'][:,0].argsort() ] # required by interp1d
+  first_col = int(np.round((sorted_trace[0,0] - x_min)/dx))
+  cols_in_trace = int(1 + (sorted_trace[-1,0] - sorted_trace[0,0])/dx)
+  logging.debug('slow = %g from %g to %g.', t['slowcoord'],
+                sorted_trace[0,0], sorted_trace[0,0] + cols_in_trace*dx)
+
+  if cols_in_trace == 1:
+    img[i,first_col] = sorted_trace[:,1]
+  else:
+    interpolated_trace = interpolate.interp1d(sorted_trace[:,0], sorted_trace[:,1], kind='nearest')
+    for j in range(cols_in_trace):
+      x = sorted_trace[0,0] + j*dx
+      img[i,first_col+j] = interpolated_trace(x)
+
+
+#
+# Output into a format easily read by gnuplot.
+#
+
+# This would also work, but does not include axis values (indices only) and is slower for large files
+#np.savetxt('image_matrix.txt', img)
+
+# The format for a gnuplot "binary matrix" is specified in:
+# http://gnuplot.sourceforge.net/docs_4.2/node330.html
+#
+# All numbers (inluding the number of points) are specified as single-precision floats.
+
+horizontal_axis_vals = x_min + dx*np.arange(ncols)
+
+# Figure out the smallest division dy in the y direction,
+dy = ( np.abs(np.diff(np.array([ t['slowcoord'] for t in all_traces ]))).min()
+       if len(all_traces) > 1 else 1. )
+
+output_fname = 'image_matrix.gnuplot_binary_matrix'
+tmp_ext = uuid.uuid4().hex
+with open(output_fname + tmp_ext, 'wb') as fout:
+
+  # first line consists of Nypts, y0, y1, ...
+  fmt = '<f%uf' % img.shape[1]
+  fout.write(struct.pack(fmt, img.shape[1], *horizontal_axis_vals ))
+
+  # following lines consist of xi, <zi,0>, <zi,1>, ...
+  fmt = '<f%uf' % img.shape[1]
+  for j in range(len(all_traces)):
+    # Write each row twice. Otherwise pm3d doesn't plot isolated rows surrounded by NaNs
+    fout.write(struct.pack(fmt, all_traces[j]['slowcoord'], *(img[j,:]) ))
+    fout.write(struct.pack(fmt, all_traces[j]['slowcoord'] + dy/2., *(img[j,:]) ))
+
+# Overwrite the old file atomically
+shutil.move(output_fname + tmp_ext, output_fname)

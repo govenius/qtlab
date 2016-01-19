@@ -102,9 +102,15 @@ class Keithley_6430(Instrument):
         self.add_parameter('source_current_level',
             flags=Instrument.FLAG_GETSET,
             units='A', minval=-105e-3, maxval=105e-3, type=types.FloatType)
+        self.add_parameter('source_current_range',
+            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+            units='A', minval=1e-12, maxval=105e-3, type=types.FloatType, format='%.3e')
         self.add_parameter('source_voltage_level',
             flags=Instrument.FLAG_GETSET,
             units='V', minval=-210., maxval=210., type=types.FloatType)
+        self.add_parameter('source_voltage_range',
+            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+            units='V', minval=200e-3, maxval=200, type=types.FloatType, format='%.3e')
 
         self.add_parameter('source_delay_auto',
             flags=Instrument.FLAG_GETSET,
@@ -225,11 +231,6 @@ class Keithley_6430(Instrument):
             type=types.IntType)
 
         # Add functions to wrapper
-        self.add_function('set_source_mode_volt')
-        self.add_function('set_source_mode_curr')
-   
-        self.add_function('set_sense_mode_volt')
-        self.add_function('set_sense_mode_curr')
         
         self.add_function('reset')
         self.add_function('get_all')
@@ -292,13 +293,15 @@ class Keithley_6430(Instrument):
             # READing = DMM reading, UNITs = Units,
             # TSTamp = Timestamp, RNUMber = Reading number,
             # CHANnel = Channel number, LIMits = Limits reading
-        self.set_source_mode_curr()
-        self.set_sense_mode_volt()
-        self.set_digits(7)
+        self.set_source_mode('CURR')
+        self.set_sense_mode('VOLT:DC,CURR:DC')
         #self.set_trigger_cont(True)
+        self.set_source_current_range(1e-6)
         self.set_source_current_level(0e-6)
         self.set_source_current_compliance(1e-6)
+        self.set_source_voltage_range(200e-3)
         self.set_source_voltage_compliance(1e-3)
+        self.set_digits(7)
         self.set_nplc(10)
 #        self.set_averaging(False)
 
@@ -322,6 +325,8 @@ class Keithley_6430(Instrument):
         self.get_source_voltage_compliance()
         self.get_source_current_compliance_tripped()
         self.get_source_voltage_compliance_tripped()
+        self.get_source_current_range()
+        self.get_source_voltage_range()
         self.get_source_current_level()
         self.get_source_voltage_level()
         self.get_source_delay_auto()
@@ -447,82 +452,6 @@ class Keithley_6430(Instrument):
     #     else:
     #         logging.error('Triggering is on continous!')
 
-    def set_source_mode_volt(self):
-        '''
-        Set source_mode to voltage
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        self.set_source_mode('VOLT')
-
-    def set_source_mode_curr(self):
-        '''
-        Set source_mode to current
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        self.set_source_mode('CURR')
-
-
-
-    def set_sense_mode_all(self):
-        '''
-        Set source_mode to current
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        self.set_sense_mode('VOLT:DC,CURR:DC,RES')
-
-    def set_sense_mode_volt(self):
-        '''
-        Set source_mode to current
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        self.set_sense_mode('VOLT')
-
-
-    def set_sense_mode_curr(self):
-        '''
-        Set sense_mode to current
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        self.set_sense_mode('CURR')
-
-
-
-    def set_sense_mode_res(self):
-        '''
-        Set sense_mode to resistance
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        self.set_sense_mode('RES')
 
 
     def set_trigger_cont(self):
@@ -685,6 +614,48 @@ class Keithley_6430(Instrument):
         logging.debug('Get source_current_compliance_tripped: %s' % r)
         return bool(int(r))
 
+    def do_set_source_current_range(self, val):
+        '''
+        Set source_current range to the specified value.
+
+        Input:
+            val (float)   : source_current_range in amps
+
+        Output:
+            None
+        '''
+        logging.debug('Set source_current_level to %s' % val)
+        self._visainstrument.write('SOUR:CURR:RANG %.3e' % val)
+
+    def do_get_source_current_range(self):
+        '''
+        Get source range for the current mode.
+        '''
+        r = self._visainstrument.ask('SOUR:CURR:RANG?')
+        logging.debug('Get source_current_level: %s' % r)
+        return float(r)
+        return bool(int(r))
+
+    def do_set_source_voltage_range(self, val):
+        '''
+        Set source_voltage range to the specified value.
+
+        Input:
+            val (float)   : source_voltage_range in amps
+
+        Output:
+            None
+        '''
+        logging.debug('Set source_voltage_level to %s' % val)
+        self._visainstrument.write('SOUR:VOLT:RANG %.3e' % val)
+
+    def do_get_source_voltage_range(self):
+        '''
+        Get source range for the voltage mode.
+        '''
+        r = self._visainstrument.ask('SOUR:VOLT:RANG?')
+        logging.debug('Get source_voltage_level: %s' % r)
+        return float(r)
     def do_set_source_current_level(self, val):
         '''
         Set source_current level to the specified value for the
@@ -1248,12 +1219,8 @@ class Keithley_6430(Instrument):
         string = ':SENS:FUNC %s' % mode
 
         logging.debug('%s', string)
+        self._visainstrument.write(':SENS:FUNC:OFF:ALL')
         self._visainstrument.write(string)
-
-        if mode.startswith('VOLT'):
-            self._change_units('V')
-        elif mode.startswith('CURR'):
-            self._change_units('A')
 
         #self.get_all()
         # Get all values again because some paramaters depend on sense_mode
@@ -1679,12 +1646,6 @@ class Keithley_6430(Instrument):
 
     # def _is_arming_and_triggering_cont(self):
     #     return (self.get_trigger_inline(query=False)[:3] == 'IMM') and (self.get_arm_inline(query=False)[:3] == 'IMM')
-
-    def _change_units(self, unit):
-        return
-        #self.set_parameter_options('readval', units=unit)
-        #self.set_parameter_options('readlastval', units=unit)
-        #self.set_parameter_options('readnextval', units=unit)
 
 
     def _measurement_start_cb(self, sender):

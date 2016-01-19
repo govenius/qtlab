@@ -1,0 +1,173 @@
+{#
+This template uses Jinja2. See http://jinja.pocoo.org/docs/templates/ for syntax.
+
+See qtlab/source/plot_engines/templateplot.py for information about available template variables.
+The variables have been chosen with gnuplot in mind, but it should be straightforward to map them
+to corresponding values used in other tools (Matlab, matplotlib, Mathematica, Origin, etc.).
+If necessary, you can use the .preprocess python script to preprocess the trace data files into whatever
+format is most easily read by your plotting tool.
+
+This is a template for two dimensional parametric curves using gnuplot.
+#}
+#!/usr/bin/gnuplot
+#
+# This file was generated from gnuplot_1d.template.
+#
+
+figwidth = {% if global_opts.width %}{{ global_opts.width }}{% else %}800
+{% endif %}
+
+figheight = {% if global_opts.height %}{{ global_opts.height }}{% else %}600
+{% endif %}
+
+basefont = "Times,{% if global_opts.basefontsize %}{{ global_opts.basefontsize }}{% else %}22{% endif %}"
+
+baselinewidth = 2.
+
+{% if global_opts.export_png %}
+pngdpi_per_screendpi = 96./72
+figwidthinpng = ceil(figwidth*pngdpi_per_screendpi)
+figheightinpng = ceil(figheight*pngdpi_per_screendpi)
+set terminal pngcairo size figwidthinpng,figheightinpng enhanced \
+    font basefont linewidth baselinewidth
+set output "output.png"
+
+{% elif global_opts.export_eps %}
+
+dpi = 72. # This affects only the figure size computation (and therefore the figure size/font size ratio)
+figwidthinches = figwidth/dpi
+figheightinches = figheight/dpi
+
+set terminal epslatex size figwidthinches,figheightinches color colortext standalone \
+    header "\\newcommand{\\ft}[0]{\\footnotesize}"
+   # \ font basefont linewidth baselinewidth
+set output "output.tex"
+
+#set terminal postscript eps size figwidthinches,figheightinches enhanced color \
+#    font basefont linewidth baselinewidth
+#set output "output.eps"
+#replot
+### To convert to PDF and to fix bounding box: ps2pdf -dEPSCrop output.eps
+
+{% endif %}
+
+
+{% if global_opts.xlabel %}set xlabel "{{ global_opts.xlabel }}"
+{% endif %}
+{% if global_opts.x2label %}set x2label "{{ global_opts.x2label }}"
+{% endif %}
+{% if global_opts.ylabel %}set ylabel "{{ global_opts.ylabel }}"
+{% endif %}
+{% if global_opts.y2label %}set y2label "{{ global_opts.y2label }}"
+{% endif %}
+{% if global_opts.zlabel %}set zlabel "{{ global_opts.zlabel }}"
+{% endif %}
+{% if global_opts.cblabel %}set cblabel "{{ global_opts.cblabel }}"
+{% endif %}
+
+{% if global_opts.xlog %}set logscale x
+{% endif %}
+{% if global_opts.x2log %}set logscale x2
+{% endif %}
+{% if global_opts.ylog %}set logscale y
+{% endif %}
+{% if global_opts.y2log %}set logscale y2
+{% endif %}
+{% if global_opts.zlog %}set logscale z
+{% endif %}
+{% if global_opts.cblog %}set logscale cb
+{% endif %}
+{% if global_opts.grid %}set grid
+{% else %}unset grid
+{% endif %}
+
+{% if not global_opts.xrange|allnone %}set xrange [{{ global_opts.xrange[0]|ifnone('') }}:{{ global_opts.xrange[1]|ifnone('') }}]
+{% endif %}
+{% if not global_opts.x2range|allnone %}set x2range [{{ global_opts.x2range[0]|ifnone('') }}:{{ global_opts.x2range[1]|ifnone('') }}]
+{% endif %}
+{% if not global_opts.yrange|allnone %}set yrange [{{ global_opts.yrange[0]|ifnone('') }}:{{ global_opts.yrange[1]|ifnone('') }}]
+{% endif %}
+{% if not global_opts.y2range|allnone %}set y2range [{{ global_opts.y2range[0]|ifnone('') }}:{{ global_opts.y2range[1]|ifnone('') }}]
+{% endif %}
+{% if not global_opts.zrange|allnone %}set zrange [{{ global_opts.zrange[0]|ifnone('') }}:{{ global_opts.zrange[1]|ifnone('') }}]
+{% endif %}
+
+{% if global_opts.title != None %}set title "{{ global_opts.title }}"
+{% endif %}
+
+###
+# Some common formatting
+###
+
+# Tick formatting
+#set format x "%.2g"
+
+### Ticks ###
+
+#set xtics 12.5,2,300 # for log scale
+#set xtics 0,50,300 # for linear scale
+#set xtics add ("200" 200)
+#set mxtics 5
+
+#set format y "10^{\%L}"  # for 10^x format (for log scale)
+#set ytics add ("1" 1)   # replace 10^0 by 1
+
+### For histograms ###
+#set boxwidth 0.025
+#set style fill transparent solid 0.5 noborder
+
+### Annotation ###
+
+# basic
+#set label "label A"  at first  30, first  60   # in data coordinates
+
+# more options
+#set label "{/Arial-Bold label B}"  at graph  0.9, graph  0.72 \
+#                                   rotate by 8 left \
+#                                   tc rgb "#777777"
+
+# legend position
+#set key left top
+set key right bottom
+#set key above title "Legend" box 3
+
+
+{% if traces %}
+plot \
+{% for trace in traces %}
+   "{{'vectorized_'+trace.npyfile}}" using 1:2:3:4 every ::0:0 \
+   binary format='{% for col in trace.recordformat %}%{{col}}%{{col}}{% endfor %}' \
+   with vectors head filled \
+{% if trace.color!=None %}
+  {% if trace.color|isint %}
+   linecolor {{ trace.color }} \
+  {% else %}
+   linecolor rgb "{{ trace.color }}" \
+  {% endif %}
+{% else %}
+   linecolor {{ loop.index }} \
+{% endif %}
+   linetype {{ trace.linetype|ifnone(1) }} \
+{% if trace.linewidth!=None %}
+   linewidth {{ trace.linewidth }} \
+{% endif %}
+   title "{{ trace.title|ifnone('') }}" \
+   axes {% if trace.top %}x2{% else %}x1{% endif %}{% if trace.right %}y2{% else %}y1{% endif %}{% if not loop.last %}, \
+{% endif %}
+{% endfor %}
+
+{% endif %}
+
+
+{% if traces %}
+
+{% if global_opts.show_on_screen %}
+set term wxt enhanced size figwidth,figheight {% if global_opts.title %}title "{{ global_opts.title }}"{% endif %} dashed
+# replace "dashed" with "solid" if you want to ignore "linetype"/"lt" in plot
+
+replot
+bind Close "exit gnuplot"
+{% endif %}
+
+{% endif %}
+

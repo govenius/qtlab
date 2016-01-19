@@ -106,7 +106,9 @@ class DataView():
           try:
             self._settings = [ (0, self._parse_settings(data)) ]
           except:
-            logging.exception("Could not parse the instrument settings file. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
+            if len(data.get_filepath()) > 0:
+              # don't warn the user if the data object has no files associated with it
+              logging.exception("Could not parse the instrument settings file. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
             self._settings = None
 
         except MemoryError as e:
@@ -177,7 +179,9 @@ class DataView():
             for jj,settings in enumerate(all_settings):
               self._settings.append( (lens[:jj].sum(), settings) )
           except:
-            logging.exception("Could not parse the instrument settings file for one or more qt.Data objects. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
+            if not all( len(dat.get_filepath()) == 0 for dat in data ):
+              # don't warn the user if the data objects have no files associated with them
+              logging.exception("Could not parse the instrument settings file for one or more qt.Data objects. Doesn't matter if you were not planning to add virtual columns based on values in the .set files.")
             self._settings = None
 
         self._data = unmasked
@@ -303,6 +307,41 @@ class DataView():
         logging.debug("# of masked/unmasked rows = %d/%d" % (full_mask.astype(np.int).sum(), (~full_mask).astype(np.int).sum()))
         self.set_mask(full_mask)
 
+    def remove_masked_rows_permanently(self):
+        '''
+        Removes the currently masked rows permanently.
+
+        This is typically unnecessary, but may be useful
+        before adding (cached) virtual columns to
+        huge data sets where most rows are masked (because
+        the cached virtual columns are computed for
+        masked rows as well.)
+        '''
+        # Removing the real data rows themselves is easy.
+        self._data = self._data[~(self._mask),:]
+        
+        # but we have to also adjust the comment & settings line numbers
+        s = np.cumsum(self._mask.astype(np.int))
+        def n_masked_before_line(lineno): return s[max(0, min(len(s)-1, lineno-1))]
+        self._comments = [ (max(0,lineno-n_masked_before_line(lineno)), comment) for lineno,comment in self._comments ]
+        self._settings = [ (max(0,lineno-n_masked_before_line(lineno)), setting) for lineno,setting in self._settings ]
+
+        # as well as remove the masked rows from cached virtual columns.
+        # However, _virtual_dims is assumed to be immutable in copy() so
+        # we must copy it here!
+        old_dims = self._virtual_dims
+        self._virtual_dims = {}
+        for name, dim in old_dims.iteritems():
+          cached_arr = dim['cached_array']
+          if isinstance(cached_arr, np.ndarray):
+            cached_arr = cached_arr[~(self._mask)]
+          elif cached_arr != None:
+            cached_arr = [ val for i,val in enumerate(cached_arr) if not self._mask[i] ]
+          self._virtual_dims[name] = { 'fn': dim['fn'], 'cached_array': cached_arr }
+
+        # finally remove the obsolete mask
+        self._mask = np.zeros(len(self._data), dtype=np.bool)
+
 
     def divide_into_sweeps(self, sweep_dimension, use_sweep_direction = None):
         '''
@@ -330,13 +369,13 @@ class DataView():
 
         if use_sweep_direction:
           for i in range(1,len(dx)):
-              if dx[i] == 0: dx[i]=dx[i-1] # this is necessary to detect changes in direction, when the end point is repeated
-          change_in_sign = (1 + np.array(np.where(dx[1:] * dx[:-1] < 0),dtype=np.int).reshape((-1))).tolist()
+              if i+1 < len(dx) and dx[i] == 0: dx[i]=dx[i+1] # this is necessary to detect changes in direction, when the end point is repeated
+          change_in_sign = (2 + np.array(np.where(dx[1:] * dx[:-1] < 0),dtype=np.int).reshape((-1))).tolist()
 
           # the direction changing twice in a row means that sweeps are being done repeatedly
           # in the same direction.
           for i in range(len(change_in_sign)-1, 0, -1):
-            if change_in_sign[i]-change_in_sign[i-1] == 1: del change_in_sign[i-1]
+            if change_in_sign[i]-change_in_sign[i-1] == 1: del change_in_sign[i]
 
           if len(change_in_sign) == 0: return np.array([[0, len(sdim)]])
 
@@ -400,7 +439,8 @@ class DataView():
           deep_copy -- copy the returned data so that it is safe to modify it.
         '''
         if name in self._virtual_dims.keys():
-            d = self._virtual_dims[name]['fn'](self)
+            d = self._virtual_dims[name]['cached_array']
+            if d == None: d = self._virtual_dims[name]['fn'](self)
             if len(d) == len(self._mask): # The function may return masked or unmasked data...
               # The function returned unmasked data so apply the mask
               try:
@@ -415,7 +455,7 @@ class DataView():
         if deep_copy: d = d.copy()
         return d
 
-    def add_virtual_dimension(self, name, fn=None, arr=None, comment_regex=None, from_set=None, cache_fn_values=True):
+    def add_virtual_dimension(self, name, fn=None, arr=None, comment_regex=None, from_set=None, cache_fn_values=True, return_result=False):
         '''
         Makes a computed vector accessible as self[name].
         The computed vector depends on whether fn, arr or comment_regex is specified.
@@ -432,22 +472,18 @@ class DataView():
                            a tuple ("instrument_name", "parameter_name", dtype=np.float).
 
           cache_fn_values -- evaluate fn(self) immediately for the entire (unmasked) array and cache the result
+          return_result   -- return the result directly as an (nd)array instead of adding it as a virtual dimension
         '''
         logging.debug('adding virtual dimension "%s"' % name)
 
         assert (fn != None) + (arr != None) + (comment_regex != None) + (from_set != None) == 1, 'You must specify exactly one of "fn", "arr", or "comment_regex".'
 
+        if arr != None:
+          assert len(arr) == len(self._mask), '"arr" must be a vector of the same length as the real data columns. If you want to do something fancier, specify your own fn.'
+
         if from_set != None:
             assert len(from_set) in [2, 3], 'from_set must be a tuple or triple.'
             assert self._settings != None, '.set files were not successfully parsed during dataview initialization.'
-
-        if arr != None:
-            assert len(arr) == len(self._mask), '"arr" must be a vector of the same length as the real data columns. If you want to do something fancier, specify your own fn.'
-
-            self.add_virtual_dimension(name,
-                                       (lambda dd,arr=arr: arr),
-                                       cache_fn_values=False)
-            return
 
         if comment_regex != None or from_set != None:
             # construct the column by parsing the comments or .sets
@@ -514,20 +550,20 @@ class DataView():
             else: vals[prev_match_on_row:] = ( prev_val for jjj in range(len(vals)-prev_match_on_row) )
             
 
-            self.add_virtual_dimension(name, arr=vals)
-            return
+            return self.add_virtual_dimension(name, arr=vals, return_result=return_result)
 
-
-        if cache_fn_values:
+        if cache_fn_values and arr==None:
             old_mask = self.get_mask().copy() # backup the mask
             self.clear_mask()
             vals = fn(self)
             self.mask_rows(old_mask) # restore the mask
 
-            self.add_virtual_dimension(name, arr=vals, cache_fn_values=False)
-            return
+            return self.add_virtual_dimension(name, arr=vals, cache_fn_values=False, return_result=return_result)
 
-        self._virtual_dims[name] = {'fn': fn}
+        if return_result:
+          return arr
+        else:
+          self._virtual_dims[name] = {'fn': fn, 'cached_array': arr}
 
     def remove_virtual_dimension(self, name):
         if name in self._virtual_dims.keys():
@@ -556,7 +592,7 @@ class DataView():
         with open(set_path, 'r') as f:
           settings_string = f.read()
       except Exception as e:
-        logging.exception("Could not load .set file from '%s'." % set_path)
+        #logging.exception("Could not load .set file from '%s'." % set_path)
         raise
 
       try:
