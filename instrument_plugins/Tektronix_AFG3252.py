@@ -343,8 +343,8 @@ class Tektronix_AFG3252(Instrument):
             None
         '''
         logging.debug(__name__ + ' : Set phase of channel %s to %.6f rad.'
-            % (channel, amp))
-        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6f' % (channel, amp))
+            % (channel, phase))
+        self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6f' % (channel, phase))
 
 
 
