@@ -80,8 +80,59 @@ class SIM900(Instrument):
 
     self.add_parameter('battery_status', type=types.StringType, flags=Instrument.FLAG_GET,
                         channels=range(1,9), channel_prefix='port%d_')
-
-    self._ramp_stepsize = 0.080
+                        
+    self.add_parameter('PID_propotional_on', type=types.StringType, flags=Instrument.FLAG_GETSET,
+                        channels=range(1,9), channel_prefix='port%d_')
+    
+    self.add_parameter('PID_propotional_gain', type=types.FloatType, flags=Instrument.FLAG_GETSET,
+                        minval=0.1,maxval=1000.,
+                        format='%.02e',
+                        channels=range(1,9), channel_prefix='port%d_')
+                        
+    self.add_parameter('PID_integral_on', type=types.StringType, flags=Instrument.FLAG_GETSET,
+                        channels=range(1,9), channel_prefix='port%d_')
+    
+    self.add_parameter('PID_integral_gain', type=types.FloatType, flags=Instrument.FLAG_GETSET,
+                        minval=1e-2,maxval=5e5,
+                        format='%.02e',
+                        channels=range(1,9), channel_prefix='port%d_')
+                        
+                        
+    self.add_parameter('PID_derivative_on', type=types.StringType, flags=Instrument.FLAG_GETSET,
+                        channels=range(1,9), channel_prefix='port%d_')
+    
+    self.add_parameter('PID_derivative_gain', type=types.FloatType, flags=Instrument.FLAG_GETSET,
+                        minval=1e-6,maxval=1e0,
+                        format='%.02e',
+                        channels=range(1,9), channel_prefix='port%d_')
+		
+    self.add_parameter('PID_offset_on', type=types.StringType, flags=Instrument.FLAG_GETSET,
+                        channels=range(1,9), channel_prefix='port%d_')
+    
+    self.add_parameter('PID_offset_gain', type=types.FloatType, flags=Instrument.FLAG_GETSET,
+                        minval=-10.,maxval=10,
+                        format='%.02e',
+                        channels=range(1,9), channel_prefix='port%d_')
+    
+    self.add_parameter('PID_manual_output_on', type=types.StringType, flags=Instrument.FLAG_GETSET,
+                        channels=range(1,9), channel_prefix='port%d_')
+    
+    self.add_parameter('PID_manual_output', type=types.FloatType, flags=Instrument.FLAG_GETSET,
+                        minval=-10.,maxval=10,
+                        format='%.02e',
+                        channels=range(1,9), channel_prefix='port%d_')
+                         
+    self.add_parameter('PID_upper_limit', type=types.FloatType, flags=Instrument.FLAG_GETSET,
+                        minval=-10.,maxval=10,
+                        format='%.02e',
+                        channels=range(1,9), channel_prefix='port%d_')
+                        
+    self.add_parameter('PID_lower_limit', type=types.FloatType, flags=Instrument.FLAG_GETSET,
+                        minval=-10.,maxval=10,
+                        format='%.02e',
+                        channels=range(1,9), channel_prefix='port%d_')
+    
+    self._ramp_stepsize = 2.0
     self._ramp_delaytime = self._min_time_between_commands
     self.add_parameter('ramp_stepsize', type=types.FloatType,
         flags=Instrument.FLAG_GETSET,
@@ -101,6 +152,30 @@ class SIM900(Instrument):
     self.add_function('get_port_voltage')
     self.add_function('set_port_on')
     self.add_function('get_port_on')
+    self.add_function('set_port_PID_propotional_on')
+    self.add_function('get_port_PID_propotional_on')
+    self.add_function('set_port_PID_propotional_gain')
+    self.add_function('get_port_PID_propotional_gain')
+    self.add_function('set_port_PID_integral_on')
+    self.add_function('get_port_PID_integral_on')
+    self.add_function('set_port_PID_integral_gain')
+    self.add_function('get_port_PID_integral_gain')
+    self.add_function('set_port_PID_derivative_on')
+    self.add_function('get_port_PID_derivative_on')
+    self.add_function('set_port_PID_derivative_gain')
+    self.add_function('get_port_PID_derivative_gain')
+    self.add_function('set_port_PID_offset_on')
+    self.add_function('get_port_PID_offset_on')
+    self.add_function('set_port_PID_offset_gain')
+    self.add_function('get_port_PID_offset_gain')
+    self.add_function('set_port_PID_manual_output_on')
+    self.add_function('get_port_PID_manual_output_on')
+    self.add_function('set_port_PID_manual_output')
+    self.add_function('get_port_PID_manual_output')
+    self.add_function('set_port_PID_upper_limit')
+    self.add_function('get_port_PID_upper_limit')
+    self.add_function('set_port_PID_lower_limit')
+    self.add_function('get_port_PID_lower_limit')
 
     if reset: self.reset()
     
@@ -320,7 +395,652 @@ class SIM900(Instrument):
 
   def _set_voltage(self, port, voltage):
     self.set_voltages({port: voltage}, update_attribute_value=False)
+  
+  def _set_PID_propotional_on(self,port,onoff):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"PCTL %s"' % (port,onoff))
+        logging.debug(__name__ + ' : setting port %s PID propotional on %s' % (port, onoff))
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d propotional on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_propotional_on(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"PCTL?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID propotional on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
 
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          if bytes == '0':
+            return False
+          else:
+            return True
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d propotional on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+  
+  #######
+  # propotional gains
+  #####
+  
+  def _set_PID_propotional_gain(self,port,val):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"GAIN %s"' % (port,val))
+        logging.debug(__name__ + ' : setting port %s PID propotional gain %s' % (port, val))
+      except Exception as e:
+        logging.warn('Attempt #%d to set port %d propotional gain SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_propotional_gain(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"GAIN?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID propotional on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          return float(bytes)
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d propotional on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+  
+  def _set_PID_integral_on(self,port,onoff):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"ICTL %s"' % (port,onoff))
+        logging.debug(__name__ + ' : setting port %s PID integral on %s' % (port, onoff))
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d integral on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_integral_on(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"ICTL?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID integral on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          if bytes == '0':
+            return False
+          else:
+            return True
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d integral on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+  
+  #######
+  # integral gains
+  #####
+  
+  def _set_PID_integral_gain(self,port,val):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"INTG %s"' % (port,val))
+        logging.debug(__name__ + ' : setting port %s PID integral gain %s' % (port, val))
+      except Exception as e:
+        logging.warn('Attempt #%d to set port %d integral gain SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_integral_gain(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"INTG?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID integral on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          return float(bytes)
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d integral on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+    
+    
+  def _set_PID_derivative_on(self,port,onoff):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"DCTL %s"' % (port,onoff))
+        logging.debug(__name__ + ' : setting port %s PID derivative on %s' % (port, onoff))
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d derivative on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_derivative_on(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"DCTL?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID derivative on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          if bytes == '0':
+            return False
+          else:
+            return True
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d derivative on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+  
+  #######
+  # derivative gains
+  #####
+  
+  def _set_PID_derivative_gain(self,port,val):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"DERV %s"' % (port,val))
+        logging.debug(__name__ + ' : setting port %s PID derivative gain %s' % (port, val))
+      except Exception as e:
+        logging.warn('Attempt #%d to set port %d derivative gain SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_derivative_gain(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"DERV?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID derivative on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          return float(bytes)
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d derivative on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+  
+  def _set_PID_offset_on(self,port,onoff):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"OCTL %s"' % (port,onoff))
+        logging.debug(__name__ + ' : setting port %s PID offset on %s' % (port, onoff))
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d offset on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_offset_on(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"OCTL?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID offset on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          if bytes == '0':
+            return False
+          else:
+            return True
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d offset on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+  
+  #######
+  # offset gains
+  #####
+  
+  def _set_PID_offset_gain(self,port,val):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"OFST %s"' % (port,val))
+        logging.debug(__name__ + ' : setting port %s PID offset gain %s' % (port, val))
+      except Exception as e:
+        logging.warn('Attempt #%d to set port %d offset gain SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_offset_gain(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"OFST?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID offset on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          return float(bytes)
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d offset on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+				
+	
+  
+  def _set_PID_manual_output_on(self,port,onoff):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"AMAN %s"' % (port,onoff))
+        logging.debug(__name__ + ' : setting port %s PID manual_output on %s' % (port, onoff))
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d manual_output on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_manual_output_on(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"AMAN?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID manual_output on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          if bytes == '0':
+            return False
+          else:
+            return True
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d manual_output on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+  
+  #######
+  # manual_outputs
+  #####
+  
+  def _set_PID_manual_output(self,port,val):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"MOUT %s"' % (port,val))
+        logging.debug(__name__ + ' : setting port %s PID manual_output  %s' % (port, val))
+      except Exception as e:
+        logging.warn('Attempt #%d to set port %d manual_output  SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_manual_output(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"MOUT?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID manual_output on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          return float(bytes)
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d manual_output on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+	
+  #######
+  # upper_limit
+  #####
+  
+  def _set_PID_upper_limit(self,port,val):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    llimit = self._get_PID_lower_limit(port)
+    if val < llimit:
+      logging.warn('Lower limit larger than upper limit.')
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"ULIM %s"' % (port,val))
+        logging.debug(__name__ + ' : setting port %s PID manual_output  %s' % (port, val))
+      except Exception as e:
+        logging.warn('Attempt #%d to set port %d manual_output  SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_upper_limit(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"ULIM?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID upper_limit %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          return float(bytes)
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d upper limit on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+	
+  
+  #######
+  # lower limits
+  #####
+  
+  def _set_PID_lower_limit(self,port,val):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return
+    ulimit = self._get_PID_upper_limit(port)
+    if ulimit < val:
+      logging.warn('Lower limit larger than upper limit.')
+      return
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"LLIM %s"' % (port,val))
+        logging.debug(__name__ + ' : setting port %s PID lower limit  %s' % (port, val))
+      except Exception as e:
+        logging.warn('Attempt #%d to set port %d lower limit  SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return
+  
+  def _get_PID_lower_limit(self,port):
+    if not self._ch_enabled[port-1]:
+      logging.warn('Port %d is disabled.' % port)
+      return np.nan
+    for attempt in range(np.max(( 1, self._retries_on_set_error ))):
+      try:
+        self._clear_output_buffer(port)
+        self._write('SNDT %s,"LLIM?"' % port)
+        r = self._ask('GETN? %s,80' % port)
+        logging.debug(__name__ + ' : getting port %s PID manual_output on %s' % (port, r))
+        if (r[:2]!="#3"): 
+          raise Exception('Response %s is not in the expected format' % r)
+        
+        nbytes = int(r[2:5])
+
+        if (nbytes < 1):
+          time.sleep((1+attempt)*0.1)
+          continue
+        else:
+          bytes = r[5:5+nbytes].replace("\n","").replace("\r","")
+          logging.debug(__name__ + ' : parsed output on response: %s' % bytes)
+          return float(bytes)
+      except Exception as e:
+        logging.warn('Attempt #%d to turn port %d manual_output on SIM failed: %s' % (1+attempt, port, str(e)))
+        time.sleep( .5 )
+        self._clear_mainframe_output_buffer()
+        self._wait_until_input_read(port)
+        self._clear_output_buffer(port)
+        time.sleep( .5+attempt )
+    return np.nan
+	
+  
+  
   def _get_voltage(self, port):
     if not self._ch_enabled[port-1]:
       logging.warn('Port %d is disabled.' % port)
@@ -437,7 +1157,175 @@ class SIM900(Instrument):
     if port < 1 or port > 8:
       raise Exception('port must be between 1 and 8, not %s.' % str(port))
     return getattr(self, 'get_port%s_on' % str(port))()
-
+  
+  def set_port_PID_propotional_on(self, port, onoff):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_propotional_on' % str(port))(onoff)
+  
+  def get_port_PID_propotional_on(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_propotional_on' % str(port))()
+  
+  def set_port_PID_propotional_gain(self, port, val):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_propotional_gain' % str(port))(val)
+  
+  def get_port_PID_propotional_gain(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_propotional_gain' % str(port))()
+  
+  def set_port_PID_integral_on(self, port, onoff):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_integral_on' % str(port))(onoff)
+  
+  def get_port_PID_integral_on(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_integral_on' % str(port))()
+  
+  def set_port_PID_integral_gain(self, port, val):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_integral_gain' % str(port))(val)
+  
+  def get_port_PID_integral_gain(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_integral_gain' % str(port))()
+    
+  def set_port_PID_derivative_on(self, port, onoff):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_derivative_on' % str(port))(onoff)
+  
+  def get_port_PID_derivative_on(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_derivative_on' % str(port))()
+  
+  def set_port_PID_derivative_gain(self, port, val):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_derivative_gain' % str(port))(val)
+  
+  def get_port_PID_derivative_gain(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_derivative_gain' % str(port))()
+  
+  def set_port_PID_offset_on(self, port, onoff):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_offset_on' % str(port))(onoff)
+  
+  def get_port_PID_offset_on(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_offset_on' % str(port))()
+  
+  def set_port_PID_offset_gain(self, port, val):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_offset_gain' % str(port))(val)
+  
+  def get_port_PID_offset_gain(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_offset_gain' % str(port))()
+  
+  def set_port_PID_manual_output_on(self, port, onoff):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_manual_output_on' % str(port))(onoff)
+  
+  def get_port_PID_manual_output_on(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_manual_output_on' % str(port))()
+  
+  def set_port_PID_manual_output(self, port, val):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_manual_output' % str(port))(val)
+  
+  def get_port_PID_manual_output(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_manual_output' % str(port))()
+    
+  def set_port_PID_upper_limit(self, port, onoff):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_upper_limit' % str(port))(onoff)
+  
+  def get_port_PID_upper_limit(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_upper_limit' % str(port))()
+  
+  def set_port_PID_lower_limit(self, port, val):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'set_port%s_PID_lower_limit' % str(port))(val)
+  
+  def get_port_PID_lower_limit(self, port):
+    if not isinstance(port, int):
+      raise Exception('port must be specified as an integer, not %s.' % str(port))
+    if port < 1 or port > 8:
+      raise Exception('port must be between 1 and 8, not %s.' % str(port))
+    getattr(self, 'get_port%s_PID_lower_limit' % str(port))()
+  
   def do_set_ramp_stepsize(self, stepsize):
     self._ramp_stepsize = stepsize
   def do_get_ramp_stepsize(self):
@@ -474,7 +1362,56 @@ class SIM900(Instrument):
     self._set_voltage(channel, voltage)
   def do_get_voltage(self, channel):
     return self._get_voltage(channel)
-
+  def do_set_PID_propotional_on(self, onoff, channel):
+    self._set_PID_propotional_on(channel,onoff)
+  def do_get_PID_propotional_on(self, channel):
+    return self._get_PID_propotional_on(channel)
+  def do_set_PID_propotional_gain(self, val, channel):
+    self._set_PID_propotional_gain(channel,val)
+  def do_get_PID_propotional_gain(self, channel):
+    return self._get_PID_propotional_gain(channel)
+  def do_set_PID_integral_on(self, onoff, channel):
+    self._set_PID_integral_on(channel,onoff)
+  def do_get_PID_integral_on(self, channel):
+    return self._get_PID_integral_on(channel)
+  def do_set_PID_integral_gain(self, val, channel):
+    self._set_PID_integral_gain(channel,val)
+  def do_get_PID_integral_gain(self, channel):
+    return self._get_PID_integral_gain(channel)
+  def do_set_PID_derivative_on(self, onoff, channel):
+    self._set_PID_derivative_on(channel,onoff)
+  def do_get_PID_derivative_on(self, channel):
+    return self._get_PID_derivative_on(channel)
+  def do_set_PID_derivative_gain(self, val, channel):
+    self._set_PID_derivative_gain(channel,val)
+  def do_get_PID_derivative_gain(self, channel):
+    return self._get_PID_derivative_gain(channel)
+  def do_set_PID_offset_on(self, onoff, channel):
+    self._set_PID_offset_on(channel,onoff)
+  def do_get_PID_offset_on(self, channel):
+    return self._get_PID_offset_on(channel)
+  def do_set_PID_offset_gain(self, val, channel):
+    self._set_PID_offset_gain(channel,val)
+  def do_get_PID_offset_gain(self, channel):
+    return self._get_PID_offset_gain(channel)
+  def do_set_PID_manual_output_on(self, onoff, channel):
+    self._set_PID_manual_output_on(channel,onoff)
+  def do_get_PID_manual_output_on(self, channel):
+    return self._get_PID_manual_output_on(channel)
+  def do_set_PID_manual_output(self, val, channel):
+    self._set_PID_manual_output(channel,val)
+  def do_get_PID_manual_output(self, channel):
+    return self._get_PID_manual_output(channel)
+  def do_set_PID_upper_limit(self, onoff, channel):
+    self._set_PID_upper_limit(channel,onoff)
+  def do_get_PID_upper_limit(self, channel):
+    return self._get_PID_upper_limit(channel)
+  def do_set_PID_lower_limit(self, val, channel):
+    self._set_PID_lower_limit(channel,val)
+  def do_get_PID_lower_limit(self, channel):
+    return self._get_PID_lower_limit(channel)    
+    
+  
   def do_set_on(self, val, channel):
     '''
     This command sets the output state of the port.
@@ -558,7 +1495,7 @@ class SIM900(Instrument):
     Output:
         battery state (string)
     '''
-    for attempt in range(3):
+    for attempt in range(1):
       try:
         self._clear_output_buffer(channel)
         self._write('SNDT %s,"BATS?"' % channel)
