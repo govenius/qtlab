@@ -58,7 +58,7 @@ class SIM900(Instrument):
     #   50 ms  --> may be OK (worked for a few hundred commands)
     #   150 ms --> problems still occur ~daily/weekly
     #   200 ms --> seems OK
-    self._min_time_between_commands = 0.200  # in seconds
+    self._min_time_between_commands = 0.100  # in seconds
 
     for port in range(1,9):
       self._clear_output_buffer(port)
