@@ -207,7 +207,7 @@ class PXI_scope(Instrument):
         else:
           assert  nflips == 0
           times = np.array([ 0 ], dtype=np.float)
-          triggers = np.array([ dio_defaul_value ], dtype=np.int)
+          triggers = np.array([ dio_default_value ], dtype=np.int)
 
         times /= self._CLOCK_RATE
 
