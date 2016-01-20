@@ -165,7 +165,8 @@ class SIM900(Instrument):
         getattr(self, 'get_port%d_voltage' % c)()
 
   def _ask(self, cmd):
-    for attempt in range(3):
+    max_attempts = 3
+    for attempt in range(max_attempts):
       try:
         t = time.time()
         t_to_sleep = self._min_time_between_commands - (t - self._last_communication_time)
@@ -177,13 +178,15 @@ class SIM900(Instrument):
         return r
       except Exception as e:
         logging.warn('Failed to get a reply from SIM: %s' % str(e))
+        if attempt == max_attempts-1: raise
         self._last_communication_time = time.time()
         time.sleep( .2 )
         self._clear_mainframe_output_buffer()
         time.sleep( .2+attempt )
 
   def _write(self, cmd):
-    for attempt in range(3):
+    max_attempts = 3
+    for attempt in range(max_attempts):
       try:
         t = time.time()
         t_to_sleep = self._min_time_between_commands - (t - self._last_communication_time)
@@ -194,6 +197,7 @@ class SIM900(Instrument):
         return
       except Exception as e:
         logging.warn('Failed to write to SIM: %s' % str(e))
+        if attempt == max_attempts-1: raise
         self._last_communication_time = time.time()
         time.sleep( .2 )
         self._clear_mainframe_output_buffer()
