@@ -237,7 +237,7 @@ class SIM900(Instrument):
   def _clear_output_buffer(self, port):
     for j in range(8):
       resp = self._ask('GETN? %s,80' % port)
-      if len(resp) == 5:   # we expect "#3000" if there is nothing in the buffer
+      if resp.strip() == "#3000":   # we expect "#3000" if there is nothing in the buffer
         return
         
       if j>0: logging.warn('Still getting %d bytes of output after %d GETN? %d,80 queries.' % (len(resp)-5, 1+j, port))
