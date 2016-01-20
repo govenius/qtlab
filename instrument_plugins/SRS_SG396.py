@@ -364,7 +364,7 @@ class SRS_SG396(Instrument):
     '''
     assert v in [-1,0,1,2,3,4,5,7,8,9], 'Unknown modulation type %s (see manual p. 114).' % v
     if v != -1: self._visainstrument.write('TYPE %d' % v)
-    self._visainstrument.write('MODL %d', 0 if v == -1 else 1)
+    self._visainstrument.write('MODL %d' % (0 if v == -1 else 1))
 
   def do_get_modulation_subtype(self):
     '''
@@ -372,7 +372,7 @@ class SRS_SG396(Instrument):
     '''
     return self._visainstrument.ask('STYP?')
 
-  def do_set_modulation(self, v):
+  def do_set_modulation_subtype(self, v):
     '''
     Sets the modulation subtype.
     '''
