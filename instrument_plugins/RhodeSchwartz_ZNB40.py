@@ -1,6 +1,6 @@
-# Driver for Rhode & Schwartz VNA ZNB40 1311.6010.72
+# Driver for Rhode & Schwartz VNA ZNB40
 # Russell Lake <russell.lake@aalto.fi>, 2014
-# Joonas Govenius <joonas.govenius@aalto.fi>, 2013
+# Joonas Govenius <joonas.govenius@aalto.fi>, 2015
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,15 +29,19 @@ import qt
 
 class RhodeSchwartz_ZNB40(Instrument):
     '''
-    This is the driver for the Rohde & Schwarz FSL spectrum analyzer
+    This is the driver for the Rohde & Schwarz FSL spectrum analyzer.
+
+    Note that, for simplicity, the set functions set the specified
+    parameter for all channels.
+    The get functions return the value for the currently active channel.
 
     Usage:
     Initialize with
-    <name> = qt.instruments.create('<name>', 'RhodeSchwartz_ZVCE_1127_8600_50',
+    <name> = qt.instruments.create('<name>', 'RhodeSchwartz_ZNB40',
         address='TCPIP::<IP-address>::INSTR',
         reset=<bool>,)
 
-    For GPIB the address is: 'GPIB::<gpib-address>'
+    For GPIB the address is: 'GPIB<interface_nunmber>::<gpib-address>'
     '''
         
     
@@ -56,7 +60,8 @@ class RhodeSchwartz_ZNB40(Instrument):
 
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+        self._default_timeout = 120. #60.
+        self._visainstrument = visa.instrument(self._address, timeout=self._default_timeout)
 
         self._freq_unit = 1
         self._freq_unit_symbol = 'Hz'
@@ -75,19 +80,31 @@ class RhodeSchwartz_ZNB40(Instrument):
                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
                            units=self._freq_unit_symbol, minval=0.020, maxval=40e9)
 
-        self.add_parameter('span_frequency', type=types.FloatType, format='%.06e',
+        self.add_parameter('span', type=types.FloatType, format='%.06e',
                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
                           units=self._freq_unit_symbol, minval=0.020)
 
         self.add_parameter('numpoints', type=types.IntType, format='%g',
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
                            units='', minval=1)
-        self.add_parameter('averages', type=types.IntType, format='%g',
+        self.add_parameter('average_mode', type=types.StringType,
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                           units='',minval=0, maxval=32767)
+                           format_map={'AUTO': 'automatic',
+                                       'FLAT': 'cumulative average of magnitude and phase',
+                                       'RED': 'cumulative average of quadratures',
+                                       'MOV': 'simple average of quadratures'})
+        self.add_parameter('averages', type=types.IntType,
+                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                           minval=1, maxval=1000)
         self.add_parameter('if_bandwidth', type=types.FloatType, format='%.0e',
+                           minval=1., maxval=1e6,
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
                            units=self._freq_unit_symbol)
+        self.add_parameter('if_selectivity', type=types.StringType,
+                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                           format_map={'NORM': 'normal',
+                                       'MED': 'medium',
+                                       'HIGH': 'high'})
         self.add_parameter('sweeptime', type=types.FloatType, format='%g',
                            flags=Instrument.FLAG_GET,
                            units='s')
@@ -96,7 +113,7 @@ class RhodeSchwartz_ZNB40(Instrument):
 
         self.add_parameter('source_power', type=types.FloatType,
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                           units='dBm',minval=-30., maxval=8.)
+                           units='dBm',minval=-30., maxval=10.)
 
         self.add_parameter('trigger_source', type=types.StringType,
                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
@@ -130,6 +147,10 @@ class RhodeSchwartz_ZNB40(Instrument):
         self.add_function('reset')
         self.add_function('send_trigger')
         self.add_function('get_all')
+
+        # for backwards compatibility with the old parameter name ("span_frequency")
+        self.add_function('get_span_frequency')
+        self.add_function('set_span_frequency')
         
         if reset:
             self.reset()
@@ -142,6 +163,10 @@ class RhodeSchwartz_ZNB40(Instrument):
 # --------------------------------------
 #           functions
 # --------------------------------------
+
+    # for backwards compatibility with the old parameter name "span_frequency"
+    def get_span_frequency(self): return self.get_span()
+    def set_span_frequency(self, s): self.set_span(s)
 
     def reset(self):
       self._visainstrument.write('*RST') #reset to default settings
@@ -162,14 +187,27 @@ class RhodeSchwartz_ZNB40(Instrument):
       else:
         raise Exception('Not sure how to trigger manually when trigger source is set to "%s"' % s)
 
-    def trigger_n_times(self, n):
+    def trigger_n_times(self, n, block_until_done=False):
+        ''' Trigger exactly n sweeps. Waits until done before returning iff block_until_done==True. '''
         self._visainstrument.write('SENSE:SWEEP:COUNT:ALL %u' % n)
-        self._visainstrument.write('INIT:IMM:ALL')
+        cmd = 'INIT:IMM:ALL%s' % ('; *OPC?' if block_until_done else '')
+        min_wait_time = n*self.get_sweeptime()
+        if block_until_done and min_wait_time < 10.:
+          r = self._visainstrument.ask(cmd)
+          assert r.strip() == '1', r
+        else:
+          self._visainstrument.write(cmd)
+          if block_until_done:
+            qt.msleep(min_wait_time - 5.)
+            r = self._visainstrument.read()
+            assert r.strip() == '1', r
 
-    def trigger_n_times(self, n):
-        self._visainstrument.write('SENSE:SWEEP:COUNT:ALL %u' % n)
-        self._visainstrument.write('INIT:IMM:ALL')
-
+    def clear_averages(self):
+        ''' Restart averaging (on all channels). '''
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+          self._visainstrument.write('SENSE%s:AVER:CLE' % (chan))
+    
     def autoscale_once(self):
         ch_numbers, ch_names = self.ch_catalog()
         for chan in ch_numbers:
@@ -180,14 +218,18 @@ class RhodeSchwartz_ZNB40(Instrument):
         self._visainstrument.write('SYSTEM:DISPLAY:UPDATE ON')
         self.set_sweep_mode('single')
         self.autoscale_once()
+        self.get_all()
 
     def set_default_channel_config(self):
         default_channel_to_s = { 1: 'S11', 2: 'S21', 3: 'S12', 4: 'S22' }
+        self._visainstrument.write('*RST')
+        self.set_sweep_mode('single')
         for chan in range(1,5):
           self._visainstrument.write(':CALCULATE%d:PARAMETER:SDEFINE "Trc%u", "%s"' % (chan,chan, default_channel_to_s[chan]))
           self._visainstrument.write(':DISPLAY:WINDOW%u:STATE ON' % chan)
           self._visainstrument.write(':DISPLAY:WINDOW%u:TRACE%u:FEED "Trc%u"' % (chan, chan, chan))
         self._visainstrument.write('SYSTEM:DISPLAY:UPDATE ON')
+        self.get_all()
 
     def get_all(self):
         self.get_sweep_mode()
@@ -195,32 +237,35 @@ class RhodeSchwartz_ZNB40(Instrument):
         self.get_start_frequency()
         self.get_stop_frequency()
         self.get_numpoints()
+        self.get_average_mode()
         self.get_averages()
         self.get_if_bandwidth()
+        self.get_if_selectivity()
         self.get_external_reference()
         self.get_external_reference_frequency()
         self.get_source_power()
         self.get_sweeptime()
         self.get_sweeptime_auto()
         self.get_center_frequency()
-        self.get_span_frequency()
+        self.get_span()
         
     def get_data(self, s_parameter):
         '''
-        Get unformatted measured data from the current channel.
+        Get the measured S parameter.
         s_parameter --- must be one of ['S11', 'S21', 'S12', 'S22']
         '''
         s = s_parameter.upper().strip()
         assert s in ['S11', 'S21', 'S12', 'S22'], 'Invalid S-parameter: %s' % s_parameter
-        logging.debug(__name__ + ' : Get trace data.')
+        logging.debug(__name__ + ' : Get %s data.' % s)
         
-        # assert that the channels are configured for the correct s-parameter measurements        
+        # check that the requested S parameter is being measured on some channel
         try:
             s2chan = self.s_to_channel_dict()[s_parameter]
         except KeyError:
-            print '%s is not currently being measured.' % s_parameter
+            logging.warn('%s is not currently being measured.', s_parameter)
             raise
 
+        # Verify the function (again <-- seems unnecessary but doesn't hurt either)
         r = self._visainstrument.ask('SENSe%u:FUNCtion?' % s2chan)
         assert r.strip().strip("'").upper().endswith(s), 'Channel configuration has been changed! (%s)' % r
 
@@ -247,10 +292,6 @@ class RhodeSchwartz_ZNB40(Instrument):
         logging.debug(__name__ + 'start a single sweep')
 
     def get_function(self,chan):
-        '''
-        Same as restart sweep in manual operation.
-        '''
-        #logging.debug(__name__ + 'start a single sweep')
         r = self._visainstrument.ask('SENSe%u:FUNCtion?' % chan)        
         return r
 
@@ -271,7 +312,7 @@ class RhodeSchwartz_ZNB40(Instrument):
 
 #       return eval('[' + self._visainstrument.ask('TRAC:STIM? CH1DATA') + ']')    
 
-    def do_get_start_frequency(self): #in Hz
+    def do_get_start_frequency(self):
         '''
         Start of sweep (Hz)
         '''
@@ -280,21 +321,14 @@ class RhodeSchwartz_ZNB40(Instrument):
 
     def do_set_start_frequency(self, start): #in Hz
         logging.debug('Setting start freq to %s' % start)
-        return self._visainstrument.write('FREQ:STAR %E' % (start*self._freq_unit))
-
-    def do_get_center_frequency(self): #in Hz
-        '''
-        Start of sweep (Hz)
-        '''
-        logging.debug('Reading start frequency')
-        return float(self._visainstrument.ask('SENS:FREQ:STAR?'))/self._freq_unit
-
-    def do_set_center_frequency(self, start): #in Hz
-        logging.debug('Setting start freq to %s' % start)
-        return self._visainstrument.write('FREQ:STAR %E' % (start*self._freq_unit))
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+          self._visainstrument.write('SENSE%s:FREQ:STAR %E' % (chan, start*self._freq_unit))
+        self.get_center_frequency()
+        self.get_span()
 
 
-    def do_get_stop_frequency(self): #in Hz
+    def do_get_stop_frequency(self):
         '''
         End of sweep (Hz)
         '''
@@ -303,21 +337,43 @@ class RhodeSchwartz_ZNB40(Instrument):
 
     def do_set_stop_frequency(self, stop): #in Hz
         logging.debug('Setting stop freq to %s' % stop)
-        return self._visainstrument.write('FREQ:STOP %E' % (stop*self._freq_unit))
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+          self._visainstrument.write('SENSE%s:FREQ:STOP %E' % (chan, stop*self._freq_unit))
+        self.get_center_frequency()
+        self.get_span()
 
-    def do_get_center_frequency(self): #in Hz
-       '''
-       End of sweep (Hz)
-       '''
-       logging.debug('Reading stop frequency')
-       return float(self._visainstrument.ask('SENS:FREQ:CENT?'))/self._freq_unit
 
-    def do_get_span_frequency(self): #in Hz
-       '''
-       End of sweep (Hz)
-       '''
-       logging.debug('Reading stop frequency')
-       return float(self._visainstrument.ask('SENS:FREQ:SPAN?'))/self._freq_unit
+    def do_get_center_frequency(self):
+        '''
+        End of sweep (Hz)
+        '''
+        logging.debug('Reading the center frequency')
+        return float(self._visainstrument.ask('SENS:FREQ:CENT?'))/self._freq_unit
+
+    def do_set_center_frequency(self, s): #in Hz
+        logging.debug('Setting center freq to %s' % s)
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+            self._visainstrument.write('SENSE%s:FREQ:CENT %s Hz' % (chan,s))
+        self.get_start_frequency()
+        self.get_stop_frequency()
+
+    def do_get_span(self):
+        '''
+        End of sweep (Hz)
+        '''
+        logging.debug('Reading the span')
+        return float(self._visainstrument.ask('SENS:FREQ:SPAN?'))/self._freq_unit
+
+    def do_set_span(self, s):
+        logging.debug('Setting span to %s' % s)
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+            self._visainstrument.write('SENSE%s:FREQ:SPAN %s Hz' % (chan,s))
+        self.get_start_frequency()
+        self.get_stop_frequency()
+
 
     def do_get_numpoints(self):
         '''
@@ -328,13 +384,21 @@ class RhodeSchwartz_ZNB40(Instrument):
 
     def do_set_numpoints(self,numpoints):
         logging.debug('Setting sweep points to %f' % numpoints)
-        self._visainstrument.write('SENSE1:SWE:POIN %f' % numpoints)
-    
-    def do_get_if_bandwidth(self): #in Hz
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+            self._visainstrument.write('SENSE%s:SWE:POIN %f' % (chan, numpoints))
+        return self._visainstrument.ask('SWE:POIN?')
+
+    def do_get_if_bandwidth(self):
         logging.debug('Reading resolution bandwidth')
         r = self._visainstrument.ask('BAND?')
-        if r.strip().lower().startswith('max'): r = 26000
+        if r.strip().lower().startswith('max'): r = 1e6
         return float(r)/self._freq_unit
+
+    def do_get_if_selectivity(self):
+        logging.debug('Reading IF filter selectivity')
+        r = self._visainstrument.ask('BAND:SEL?')
+        return r.strip().upper()
     
     def ch_catalog(self):
         logging.debug('return numbers and names of all channels')
@@ -360,19 +424,19 @@ class RhodeSchwartz_ZNB40(Instrument):
         return self._visainstrument.ask(':CALCULATE%u:PARAMETER:SELECT?' % chan)
 
 
-    def do_set_if_bandwidth(self,if_bandwidth): #in Hz
-        '''
-        Note that video BW is automatically kept at 3x reolution BW
-        It can be change manually on the FSL or using 'BAND:VID %sHz'
-        '''
+    def do_set_if_bandwidth(self,if_bandwidth):
         logging.debug('Setting Resolution BW to %s' % if_bandwidth)
         ch_numbers, ch_names = self.ch_catalog()
-        if np.abs(if_bandwidth - 26e3) > 1:
-            for chan in ch_numbers:
-                self._visainstrument.write('SENSE%s:BWIDTH:RESOLUTION %s' % (chan,if_bandwidth))
-        else:
-          self._visainstrument.write('BAND MAX')
-        return self.get_sweeptime()
+        for chan in ch_numbers:
+          self._visainstrument.write('SENSE%s:BWIDTH:RESOLUTION %s' % (chan,if_bandwidth))
+        self.get_sweeptime()
+
+    def do_set_if_selectivity(self, if_sel):
+        logging.debug('Setting IF filter selectivity to %s' % if_sel)
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+            self._visainstrument.write('SENSE%s:BWIDTH:SEL %s' % (chan, if_sel))
+        self.get_sweeptime()
 
     def do_get_sweeptime(self):
         logging.debug('reading sweeptime')
@@ -385,44 +449,54 @@ class RhodeSchwartz_ZNB40(Instrument):
 
     def do_set_sweeptime_auto(self, val): #in seconds
         logging.debug('Setting sweeptime auto to %s' % val)
-        return self._visainstrument.write('SWE:TIME:AUTO %s' % ('ON' if val else 'OFF'))
+        self._visainstrument.write('SWE:TIME:AUTO %s' % ('ON' if val else 'OFF'))
 
     def do_get_source_power(self):
         logging.debug('Reading Source power')
         return float(self._visainstrument.ask('SOUR:POW?'))
 
-    def do_set_center_frequency(self, stop): #in Hz
-       logging.debug('Setting center freq to %s' % stop)
-       return self._visainstrument.write('FREQ:CENT %s Hz' % stop)
+    def do_get_average_mode(self):
+        logging.debug(__name__ + ' : get averaging mode')
+        m = self._visainstrument.ask('AVER:MODE?').strip().upper()
+        if m.startswith('AUTO'): m = 'AUTO'
+        elif m.startswith('FLAT'): m = 'FLAT'
+        elif m.startswith('RED'): m = 'RED'
+        elif m.startswith('MOV'): m = 'MOV'
+        else: raise Exception('unknown averaging mode: %s' % m)
+        return m
 
-    def do_set_span_frequency(self, stop): #in Hz
-       logging.debug('Setting center freq to %s' % stop)
-       return self._visainstrument.write('FREQ:SPAN %s Hz' % stop)
+    def do_set_average_mode(self, m):
+        logging.debug(__name__ + ' : set averaging mode to %s' % m)
+        if m.startswith('AUTO'): m = 'AUTO'
+        elif m.startswith('FLAT'): m = 'FLAT'
+        elif m.startswith('RED'): m = 'RED'
+        elif m.startswith('MOV'): m = 'MOV'
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+          self._visainstrument.write('SENSE%s:AVER:MODE %s' % (chan, m))
 
     def do_get_averages(self):
         '''
-        Number of averages per sweep. 0 is default and 32767 is max.
+        Number of sweeps to average.
         '''
         logging.debug('Reading number of averages')
         return int(self._visainstrument.ask('AVER:COUN?'))
 
     def do_set_averages(self, averages):
         logging.debug('Setting number of averages to %s' % averages)
-        self._visainstrument.write('AVER:COUN %s' % averages)
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+          self._visainstrument.write('SENSE%s:AVER:COUN %s' % (chan, averages))
+          self._visainstrument.write('SENSE%s:AVER:STAT %s' % (chan, (1 if averages > 1 else 0)))
 
-    def do_set_source_power(self, source_power): #in dBm
+    def do_set_source_power(self, source_power):
         '''
-        Can be set to 0,-10,-20,-30 dBm. on 18GHz FSL
-        For 3GHz FSL 1 dBm increments between 0 and -20dBm
-        Default is -20dBm
-        
-        Note: calibration should be done at instrument.
-        Details such as power offset can also be adjusted at instrument (op manual p. 294)
+        Set output power in dBm.
         '''
-        logging.debug('Setting tracking generator power to %s' % source_power)
-    #    if self.get_tracking()==False:
-     #       print 'Source off since not in tracking mode. Will be at %sdBm.' % source_power
-        self._visainstrument.write('SOUR:POW %s dBm' % source_power)
+        logging.debug('Setting generator power to %s' % source_power)
+        ch_numbers, ch_names = self.ch_catalog()
+        for chan in ch_numbers:
+            self._visainstrument.write('SOUR%s:POW %s dBm' % (chan, source_power))
     
     def do_get_sweep_mode(self):
         logging.debug('Getting sweep mode.')

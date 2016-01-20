@@ -346,6 +346,11 @@ class bluefors_log_reader(Instrument):
 
       If minimum=True, return the minimum instead of maximum.
 
+      There are a few special "channels" that do something more complex:
+        * 'tank pressure'
+        * 'static compressor pressure high'
+        * 'static compressor pressure low'
+
       In combination with find_cooldown(all_between=...) this is a nice way of following
       changes in tank pressure, compressor oil temperature, or base temperature
       over months or years.
@@ -353,6 +358,12 @@ class bluefors_log_reader(Instrument):
       # For example:
       all_cd = bflog.find_cooldown(all_between=['12-03-22', '15-06-25']) # slow
       bflog.get_peak_values('P5', all_cd, plot=True)
+
+      # Store the cooldown times for later use
+      import cPickle as pickle
+      with open('all_cooldowns.pickled', 'w') as f: pickle.dump(all_cd, f)
+      # To load them later you can use:
+      #with open('all_cooldowns.pickled', 'r') as f: all_cd = pickle.load(f)
       '''
 
       get_vals = None
@@ -379,6 +390,45 @@ class bluefors_log_reader(Instrument):
 
           subinterval_start = prev_off + (last_on-prev_off)/2
           return self.get_pressure(4, (subinterval_start, last_on))
+
+      elif channel.lower() in [ 'static compressor pressure high', 'static compressor pressure low' ]:
+        # Get the helium pressure in the interval before the compressor is turned on.
+        # Assumes that the compressor has been off for a while.
+        def get_vals(ends):
+          # find out when the compressor is first turned on
+          p_high = self.get_compressor_pressure_high(ends)
+          if np.isscalar(p_high) or len(p_high) < 1:
+              logging.warn('no compressor pressure data for %s', ends[0])
+              return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
+          times = p_high[:,0]
+          p_high = p_high[:,1]
+
+          p_low_pts = self.get_compressor_pressure_low(ends)
+          def p_low(t): return p_low_pts[np.argmin(np.abs(p_low_pts[:,0] - t)), 1]
+
+          threshold_pressure_diff = 10. # psi
+          if np.abs(p_high[0] - p_low(times[0])) > threshold_pressure_diff:
+              # it should be off at the first time point
+              logging.warn('compressor seems to be on at %s', times[0])
+              return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
+
+          last_off = None
+          for t, v in np.array([times, p_high]).T:
+            if np.abs(v - p_low(t)) > threshold_pressure_diff: break
+            last_off = t
+          last_off -= (last_off - ends[0])/10
+
+          if last_off == None:
+            logging.warn('Could not find a subinterval in %s when both scroll1 and V13 are on. Perhaps the mixture was not pumped out normally?', ends)
+            return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
+
+          interval = (ends[0], last_off)
+          if channel.endswith('high'):
+            return self.get_compressor_pressure_high(interval)
+          elif channel.endswith('low'):
+            return self.get_compressor_pressure_low(interval)
+          else:
+            assert False
 
       elif channel.lower().startswith('oil temperature') or channel.lower() == 'toil':
           get_vals = self.get_compressor_oil_temperature
@@ -413,6 +463,7 @@ class bluefors_log_reader(Instrument):
 
         p.set_title(plt_name)
         p.set_xlabel('time (days)')
+        p.set_ylabel(channel)
         #p.set_ylog(True)
 
         ref_time = datetime.datetime(time_and_peak_pairs[0][0].year,
@@ -434,11 +485,12 @@ class bluefors_log_reader(Instrument):
       near --- datetime object to begin the search from. Default is current time.
                Alternatively, can be a string in the "YY-MM-DD" format.
       forward_search --- search forward/backward in time, if near is not within a cooldown.
-      all_between -- find all cooldowns between a dates specified as a pair of datetime objects, or a pair of strings in the "YY-MM-DD" format.
+      all_between -- find all cooldowns between the dates specified as a pair of datetime
+                     objects, or a pair of strings in the "YY-MM-DD" format.
       '''
 
       if all_between != None:
-        logging.warn('Finding the cooldowns is quite slow. You can follow the progress from the INFO level log messages. Consider caching the results with, e.g., "all_cd = bflog.find_cooldown(all_between=[\'15-05-01\', \'15-06-25\']); import pickle" and then "with open(\'all_cooldowns.pickled\', \'w\') as f: pickle.dump(all_cd, f)". ')
+        logging.warn('Finding the cooldowns is quite slow. You can follow the progress from the INFO level log messages. Consider caching the results with, e.g., "all_cd = bflog.find_cooldown(all_between=[\'15-05-01\', \'15-06-25\']); import cPickle as pickle" and then "with open(\'all_cooldowns.pickled\', \'w\') as f: pickle.dump(all_cd, f)". ')
         # Find the latest one
         all_cooldowns = [ self.find_cooldown(near=all_between[1]) ]
 
@@ -574,7 +626,7 @@ class bluefors_log_reader(Instrument):
 
       quantities_to_plot = []
 
-      if heatswitches or turbo or condensing_compressor or scrolls:
+      if heatswitches or turbo or condensing_compressor or scrolls or compressor:
         booleans = self.get_boolean_channels(ends)
         if booleans != None:
           def bool_channel_as_vector_of_tuples(ch_name, offset=0):
@@ -627,6 +679,10 @@ class bluefors_log_reader(Instrument):
       if turbo: prefixes.append('turbo ')
       if compressor: prefixes.append('compressor ')
       for prefix in prefixes:
+
+        if prefix == 'compressor ':
+          try: quantities_to_plot.append( ('compressor ctrl panel switch', bool_channel_as_vector_of_tuples('compressor',0.2), 2, 5 ) )
+          except: logging.exception('Could not plot compressor control panel switch status.')
 
         if prefix == 'turbo ':
           try: quantities_to_plot.append( ('turbo ctrl panel switch', bool_channel_as_vector_of_tuples('turbo1',0.2), 2, 5 ) )

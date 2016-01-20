@@ -351,8 +351,6 @@ class Tektronix_AFG3252(Instrument):
                       % (channel, phase))
         self._visainstrument.write('SOURCE%s:PHASE:ADJUST %.6e' % (channel, phase))
 
-
-
     def do_get_offset(self, channel):
         '''
         Reads the offset of the designated channel of the instrument
