@@ -574,7 +574,7 @@ class bluefors_log_reader(Instrument):
 
       quantities_to_plot = []
 
-      if heatswitches or turbo or condensing_compressor or scrolls:
+      if heatswitches or turbo or condensing_compressor or scrolls or compressor:
         booleans = self.get_boolean_channels(ends)
         if booleans != None:
           def bool_channel_as_vector_of_tuples(ch_name, offset=0):
@@ -627,6 +627,10 @@ class bluefors_log_reader(Instrument):
       if turbo: prefixes.append('turbo ')
       if compressor: prefixes.append('compressor ')
       for prefix in prefixes:
+
+        if prefix == 'compressor ':
+          try: quantities_to_plot.append( ('compressor ctrl panel switch', bool_channel_as_vector_of_tuples('compressor',0.2), 2, 5 ) )
+          except: logging.exception('Could not plot compressor control panel switch status.')
 
         if prefix == 'turbo ':
           try: quantities_to_plot.append( ('turbo ctrl panel switch', bool_channel_as_vector_of_tuples('turbo1',0.2), 2, 5 ) )
