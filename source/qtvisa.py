@@ -19,31 +19,9 @@ import logging
 import socket
 import select
 
-try:
-    from pyvisa import SerialInstrument
-except:
-    pass
-
-_drivers = (
-    'pyvisa',
-    'prologix_ethernet'
-)
-
 def set_visa(name):
-    if name not in _drivers:
-        raise ValueError('Unknown VISA provider: %s', name)
-
-    try:
-        if name == "pyvisa":
-            from pyvisa import visa as module
-        else:
-            module = __import__(name)
-        global instrument
-        instrument = module.instrument
-    except:
-        logging.warning('Unable to load visa driver %s', name)
-
-set_visa('pyvisa')
+    if name == 'pyvisa': return
+    assert False, 'Deprecated: configure your visa provider directly in your pyvisa configuration (see https://pyvisa.readthedocs.org/en/stable/configuring.html).'
 
 class TcpIpInstrument:
     '''

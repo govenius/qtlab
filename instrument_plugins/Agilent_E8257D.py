@@ -46,7 +46,7 @@ class Agilent_E8257D(Instrument):
 
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+        self._visainstrument = visa.ResourceManager().open_resource(self._address)
 
         self.add_parameter('power',
             flags=Instrument.FLAG_GETSET, units='dBm', minval=-135, maxval=16, type=types.FloatType)

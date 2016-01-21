@@ -47,48 +47,60 @@ class Gigatronics_2550B(Instrument):
         '''
         logging.info(__name__ + ' : Initializing instrument Gigatronics_2550B')
         Instrument.__init__(self, name, tags=['physical'])
+
+        self._address = address
         
         if re.match('(?i)gpib', address):
           logging.info('Initializing Gigatronics using VISA.')
-          self._visainstrument = visa.instrument(address)
+          self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=2000)
+          self._visainstrument.read_termination = '\n'
+          self._visainstrument.write_termination = '\n'
         else:
           logging.info('Initializing Gigatronics using LAN.')
           self._visainstrument = tcpinstrument.TCPInstrument(address)
 
-        self.add_parameter('power',
-            flags=Instrument.FLAG_GETSET, units='dBm', minval=-135, maxval=25, type=types.FloatType)
-        self.add_parameter('phase',
-            flags=Instrument.FLAG_GETSET, units='rad', minval=-numpy.pi, maxval=numpy.pi, type=types.FloatType)
-        self.add_parameter('frequency', format='%.09e',
-            flags=Instrument.FLAG_GETSET, units='Hz', minval=1e5, maxval=50e9, type=types.FloatType, cache_time=1.)
-        self.add_parameter('alc_source',
-            flags=Instrument.FLAG_GETSET, type=types.StringType)
-        self.add_parameter('trigger_source',
-            flags=Instrument.FLAG_GETSET, type=types.StringType)
-        self.add_parameter('pulse_modulation',
-            flags=Instrument.FLAG_GETSET, type=types.BooleanType)
-        self.add_parameter('pulse_modulation_source',
-            flags=Instrument.FLAG_GETSET, type=types.StringType)
-        self.add_parameter('pulse_modulation_inverted_polarity',
-            flags=Instrument.FLAG_GETSET, type=types.BooleanType)
-        self.add_parameter('power_correction_offset',
-            flags=Instrument.FLAG_GETSET, units='dB', minval=-100., maxval=100., type=types.FloatType)
-        self.add_parameter('power_correction_slope',
-            flags=Instrument.FLAG_GETSET, units='dB/GHz', minval=0., maxval=0.5, type=types.FloatType)
-        self.add_parameter('reference_clock_source',
-            flags=Instrument.FLAG_GET, type=types.StringType)
-        self.add_parameter('mode',
-            flags=Instrument.FLAG_GET, type=types.StringType)
-        self.add_parameter('status',
-            flags=Instrument.FLAG_GETSET, type=types.StringType)
+        try:
 
-        self.add_function('reset')
-        self.add_function ('get_all')
+          self.add_parameter('idn', type=types.StringType, flags=Instrument.FLAG_GET, format='%.10s')
 
-        if (reset):
-            self.reset()
-        else:
-            self.get_all()
+          self.add_parameter('power',
+              flags=Instrument.FLAG_GETSET, units='dBm', minval=-135, maxval=25, type=types.FloatType)
+          self.add_parameter('phase',
+              flags=Instrument.FLAG_GETSET, units='rad', minval=-numpy.pi, maxval=numpy.pi, type=types.FloatType)
+          self.add_parameter('frequency', format='%.09e',
+              flags=Instrument.FLAG_GETSET, units='Hz', minval=1e5, maxval=50e9, type=types.FloatType, cache_time=1.)
+          self.add_parameter('alc_source',
+              flags=Instrument.FLAG_GETSET, type=types.StringType)
+          self.add_parameter('trigger_source',
+              flags=Instrument.FLAG_GETSET, type=types.StringType)
+          self.add_parameter('pulse_modulation',
+              flags=Instrument.FLAG_GETSET, type=types.BooleanType)
+          self.add_parameter('pulse_modulation_source',
+              flags=Instrument.FLAG_GETSET, type=types.StringType)
+          self.add_parameter('pulse_modulation_inverted_polarity',
+              flags=Instrument.FLAG_GETSET, type=types.BooleanType)
+          self.add_parameter('power_correction_offset',
+              flags=Instrument.FLAG_GETSET, units='dB', minval=-100., maxval=100., type=types.FloatType)
+          self.add_parameter('power_correction_slope',
+              flags=Instrument.FLAG_GETSET, units='dB/GHz', minval=0., maxval=0.5, type=types.FloatType)
+          self.add_parameter('reference_clock_source',
+              flags=Instrument.FLAG_GET, type=types.StringType)
+          self.add_parameter('mode',
+              flags=Instrument.FLAG_GET, type=types.StringType)
+          self.add_parameter('status',
+              flags=Instrument.FLAG_GETSET, type=types.StringType)
+
+          self.add_function('reset')
+          self.add_function ('get_all')
+
+          if (reset):
+              self.reset()
+          else:
+              self.get_all()
+
+        except:
+          self._visainstrument.close()
+          raise
 
 
     def reset(self):
@@ -117,6 +129,7 @@ class Gigatronics_2550B(Instrument):
             None
         '''
         logging.info(__name__ + ' : get all')
+        self.get_idn()
         self.get_power()
         self.get_phase()
         self.get_frequency()
@@ -130,6 +143,8 @@ class Gigatronics_2550B(Instrument):
         self.get_power_correction_slope()
         self.get_reference_clock_source()
         self.get_mode()
+
+    def do_get_idn(self): return self._visainstrument.query('*IDN?')
 
     def do_get_mode(self):
         '''

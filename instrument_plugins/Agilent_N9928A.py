@@ -48,7 +48,9 @@ class Agilent_N9928A(Instrument):
 
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address, timeout=30) # timeout is in seconds
+        self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=30000) # timeout is in milliseconds
+        self._visainstrument.read_termination = '\n'
+        self._visainstrument.write_termination = '\n'
 
         # parameters 
         self.add_parameter('operating_mode',
@@ -289,28 +291,6 @@ class Agilent_N9928A(Instrument):
             self._visainstrument.timeout = 30.  # This sometimes gets reset, not sure where...
             qt.msleep(0.1) # allow interruption
 
-    def __byte_array_to_waveform(self, bytes):
-        '''
-        Converts an array of bytes (a string) queried from the N9928A
-        in the binary 'REAL,32' format into a list of real numbers.
-        '''
-        assert bytes[0] == "#", "The first character must be a hash! (See VNA online help for the data format.)"
-        offset = 2 + int(bytes[1])
-        bytecount = int(bytes[2:offset])
-
-        # the MVNA uses little endian format i.e. '<'
-        # each float number contains 4 bytes.
-
-        fmt = '<%uf' % (bytecount / 4)
-        data = bytes[offset:]
-        
-        if bytecount%2 != 0 or bytecount != len(data):
-          msg = 'WARN: wrong byte count (%u)! fmt: %s  len(data) = %u' % (bytecount, fmt, len(data))
-          raise Exception(msg)
-
-        data = np.array(struct.unpack(fmt, data))
-        return data
-
     def get_data(self,trace):
         '''
         Get unformatted measured data from a given channel (1 - 4)
@@ -327,10 +307,12 @@ class Agilent_N9928A(Instrument):
         
         self._visainstrument.write('FORM:DATA REAL,32')
         self.select_trace(trace)
-        raw = self._visainstrument.ask('CALC:DATA:SDATA?')
-        data = self.__byte_array_to_waveform(raw)
+        data = self._visainstrument.query_binary_values('CALC:DATA:SDATA?',
+                                                        datatype='f',
+                                                        is_big_endian=False,
+                                                        container=np.array,
+                                                        header_fmt='ieee')
         return np.array([ r + 1j*i for r,i in data.reshape((-1,2)) ])
-        
 
     def get_frequency_data(self):
         '''
@@ -346,9 +328,11 @@ class Agilent_N9928A(Instrument):
         logging.debug(__name__ + 'Get the current x-axis values.')
         
         self._visainstrument.write('FORM:DATA REAL,32')
-        raw = self._visainstrument.ask('FREQ:DATA?')
-        freqs = self.__byte_array_to_waveform(raw)
-        return freqs
+        return self._visainstrument.query_binary_values('FREQ:DATA?',
+                                                        datatype='f',
+                                                        is_big_endian=False,
+                                                        container=np.array,
+                                                        header_fmt='ieee')
 
 ###  begin the parameter functions--------------    
     def do_get_sweep_mode(self):

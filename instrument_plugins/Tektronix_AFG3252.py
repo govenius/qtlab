@@ -65,7 +65,7 @@ class Tektronix_AFG3252(Instrument):
 
 
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+        self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=2000)
 
         # Add parameters
         self.add_parameter('output', type=types.BooleanType,
@@ -573,7 +573,8 @@ class Tektronix_AFG3252(Instrument):
 
         msg = 'TRAC:COPY EMEM,USER%u' % (channel)
         self._visainstrument.write(msg)
-        data = self._visainstrument.ask('TRAC:DATA? EMEM')
+        data = self._visainstrument.write('TRAC:DATA? EMEM')
+        data = self._visainstrument.read_raw()
 
         # turn outputs back on (if they were on)
         for ch,outp in enumerate(output):
@@ -665,7 +666,7 @@ class Tektronix_AFG3252(Instrument):
         USER1, USER2, USER3 or USER4.
 
         Input:
-              waveform (float) : wafeform data array (length between 2 and 131072)
+            waveform (float) : wafeform data array (length between 2 and 131072)
             normalize_by_max_abs_val (bool): Normalize the waveform?  Default is False.
             memory (int)  : 1 - USER1, 2 - USER2, 3 - USER3 or 4 - USER4.
 
@@ -679,7 +680,7 @@ class Tektronix_AFG3252(Instrument):
         self.delete_waveform(memory)
         buf = self.__waveform_to_byte_array(waveform, normalize_by_max_abs_val)
         msg = 'TRACE:DATA EMEM,#%u%u%s' % (len(str(len(buf))), len(buf), str(buf))
-        self._visainstrument.write(msg)
+        self._visainstrument.write_raw(msg)
         
         self._visainstrument.write('TRAC:COPY USER%s,EMEM' % memory)
         

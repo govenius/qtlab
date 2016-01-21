@@ -49,7 +49,7 @@ class SIM900(Instrument):
     logging.info(__name__ + ' : Initializing instrument SIM900')
     Instrument.__init__(self, name, tags=['physical'])
     self._address = address
-    self._visainstrument = visa.instrument(self._address, timeout=2.)
+    self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=2000)
     
     self._last_communication_time = time.time()
     

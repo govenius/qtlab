@@ -60,9 +60,9 @@ class RhodeSchwartz_ZNB40(Instrument):
 
         # Add some global constants
         self._address = address
-        self._default_timeout = 120. #60.
-        self._visainstrument = visa.instrument(self._address, timeout=self._default_timeout)
-
+        self._default_timeout = 120000. # ms
+        self._visainstrument = visa.ResourceManager().open_resource(self._address,
+                                                                    timeout=self._default_timeout)
         self._freq_unit = 1
         self._freq_unit_symbol = 'Hz'
         
@@ -139,10 +139,6 @@ class RhodeSchwartz_ZNB40(Instrument):
         self.add_parameter('external_reference_frequency', type=types.IntType,
                           flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
                           units='MHz')
-
-        # Connect to measurement flow to detect start and stop of measurement
-        qt.flow.connect('measurement-start', self._measurement_start_cb)
-        qt.flow.connect('measurement-end', self._measurement_end_cb)
 
         self.add_function('reset')
         self.add_function('send_trigger')
@@ -270,9 +266,13 @@ class RhodeSchwartz_ZNB40(Instrument):
         assert r.strip().strip("'").upper().endswith(s), 'Channel configuration has been changed! (%s)' % r
 
         self._visainstrument.write('FORM REAL,32')
-        raw = self._visainstrument.ask('TRAC? CH%uDATA' % s2chan)
+        raw = self._visainstrument.query_binary_values('TRAC? CH%uDATA' % s2chan,
+                                                        datatype='f',
+                                                        is_big_endian=False,
+                                                        container=np.array,
+                                                        header_fmt='ieee')
 
-        return np.array([ r + 1j*i for r,i in self.__real32_byte_array_to_ndarray(raw).reshape((-1,2)) ])
+        return np.array([ r + 1j*i for r,i in raw.reshape((-1,2)) ])
 
     def channel_to_s_dict(self):
         channel_numbers, channel_names = self.ch_catalog()
@@ -307,8 +307,11 @@ class RhodeSchwartz_ZNB40(Instrument):
         assert int(ch) == ch, 'channel_number must be an integer'
 
         self._visainstrument.write('FORM REAL,32')
-        raw = self._visainstrument.ask('TRAC:STIM? CH%dDATA' % ch)
-        return self.__real32_byte_array_to_ndarray(raw)
+        return self._visainstrument.query_binary_values('TRAC:STIM? CH%dDATA' % ch,
+                                                        datatype='f',
+                                                        is_big_endian=False,
+                                                        container=np.array,
+                                                        header_fmt='ieee')
 
 #       return eval('[' + self._visainstrument.ask('TRAC:STIM? CH1DATA') + ']')    
 
@@ -535,46 +538,3 @@ class RhodeSchwartz_ZNB40(Instrument):
     def do_set_trigger_source(self, val):
         logging.debug('Setting trigger source: %s' % val)
         self._visainstrument.write('TRIGGER:SEQUENCE:SOURCE %s' % (val))
-
-# --------------------------------------
-#           Internal Routines
-# --------------------------------------
-#####
-    def __real32_byte_array_to_ndarray(self, bytes):
-        '''
-        Converts an array of bytes (a string) queried from the ZVCE
-        in the binary 'REAL,32' format into a list of complex scattering parameters.
-        '''
-        assert bytes[0] == "#", "The first character must be a hash! (See VNA online help for the data format.)"
-        offset = 2 + int(bytes[1])
-        bytecount = int(bytes[2:offset])
-        
-        fmt = '<%uf' % (bytecount / 4)
-        data = bytes[offset:]
-        
-        if bytecount > len(data):
-          raise Exception('wrong byte count (%u)! fmt: %s  len(data) = %u' % (bytecount, fmt, len(data)))
-        data = data[:bytecount] # Sometimes there is additional crap at the end...
-
-        return np.array(struct.unpack(fmt, data))
-
-    def _measurement_start_cb(self, sender):
-        '''
-        Things to do at starting of measurement
-        '''
-        #self.set_trace_continuous(False) #switch to single trace mode
-        #self.get_all()
-
-    def _measurement_end_cb(self, sender):
-        '''
-        Things to do after the measurement
-        '''
-        #self.set_trace_continuous(True) #turn continuous back on
-    
-
-        
-
-
-
-
-

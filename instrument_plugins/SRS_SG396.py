@@ -46,125 +46,132 @@ class SRS_SG396(Instrument):
 
     # Add some global constants
     self._address = address
-    self._visainstrument = visa.instrument(self._address, timeout=2.)
+    self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=2000) # timeout is in milliseconds
+    try:
+      self._visainstrument.read_termination = '\n'
+      self._visainstrument.write_termination = '\n'
 
-    self.MAX_BNC_FREQ = 62.5e6
-    self.MIN_N_FREQ = 950e3
+      self.MAX_BNC_FREQ = 62.5e6
+      self.MIN_N_FREQ = 950e3
 
-    self.add_parameter('power',
-                       flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                       units='dBm', minval=-110, maxval=16.5, type=types.FloatType)
-    self.add_parameter('phase',
-                       flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                       units='deg', minval=-360, maxval=360, type=types.FloatType)
-    self.add_parameter('frequency', format='%.09e',
-                       flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                       units='Hz', minval=0, maxval=6.075e9, type=types.FloatType,
-                       cache_time=1.) # <-- cache because this is queried a lot when setting other params
-    self.add_parameter('dc_offset',
-                       flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                       units='V', minval=-1.5, maxval=1.5, type=types.FloatType)
+      self.add_parameter('power',
+                         flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                         units='dBm', minval=-110, maxval=16.5, type=types.FloatType)
+      self.add_parameter('phase',
+                         flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                         units='deg', minval=-360, maxval=360, type=types.FloatType)
+      self.add_parameter('frequency', format='%.09e',
+                         flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                         units='Hz', minval=0, maxval=6.075e9, type=types.FloatType)
+                         #cache_time=1.) # <-- cache because this is queried a lot when setting other params
+      self.add_parameter('dc_offset',
+                         flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                         units='V', minval=-1.5, maxval=1.5, type=types.FloatType)
 
-    self.add_parameter('idn', flags=Instrument.FLAG_GET, type=types.StringType)
-    self.add_parameter('temperature', flags=Instrument.FLAG_GET, units='deg C', type=types.FloatType)
+      self.add_parameter('idn', flags=Instrument.FLAG_GET, type=types.StringType)
+      self.add_parameter('temperature', flags=Instrument.FLAG_GET, units='deg C', type=types.FloatType)
 
-    self.add_parameter('status',
-        flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.StringType,
-        format_map={'on': 'output on',
-                    'off': 'output off'})
+      self.add_parameter('status',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.StringType,
+          format_map={'on': 'output on',
+                      'off': 'output off'})
 
-    self.add_parameter('modulation',
-        flags=Instrument.FLAG_GET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
-        format_map={-1: 'no modulation',
-                    0: 'AM / ASK',
-                    1: 'FM / FSK',
-                    2: 'phase / PSK',
-                    3: 'sweep',
-                    4: 'pulse',
-                    5: 'blank',
-                    7: 'QAM',
-                    8: 'CPM',
-                    9: 'VSB'})
-    self.add_parameter('modulation_subtype',
-        flags=Instrument.FLAG_GET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
-        format_map={0: 'analog (no constellation mapping)',
-                    1: 'vector (no constellation mapping)',
-                    2: 'default 1-bit constellation',
-                    3: 'default 2-bit constellation',
-                    4: 'default 3-bit constellation',
-                    5: 'default 4-bit constellation',
-                    6: 'default 5-bit constellation',
-                    7: 'default 6-bit constellation',
-                    8: 'default 7-bit constellation',
-                    9: 'default 8-bit constellation',
-                    10: 'default 9-bit constellation',
-                    1: 'user constellation',
-                    1: 'factory OQPSK constellation',
-                    1: 'factory QPSK constellation',
-                    1: 'factory pi/4 DQPSK constellation',
-                    1: 'factor 3pi/8 8PSK constellation'})
+      self.add_parameter('modulation',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
+          format_map={-1: 'no modulation',
+                      0: 'AM / ASK',
+                      1: 'FM / FSK',
+                      2: 'phase / PSK',
+                      3: 'sweep',
+                      4: 'pulse',
+                      5: 'blank',
+                      7: 'QAM',
+                      8: 'CPM',
+                      9: 'VSB'})
+      self.add_parameter('modulation_subtype',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
+          format_map={0: 'analog (no constellation mapping)',
+                      1: 'vector (no constellation mapping)',
+                      2: 'default 1-bit constellation',
+                      3: 'default 2-bit constellation',
+                      4: 'default 3-bit constellation',
+                      5: 'default 4-bit constellation',
+                      6: 'default 5-bit constellation',
+                      7: 'default 6-bit constellation',
+                      8: 'default 7-bit constellation',
+                      9: 'default 8-bit constellation',
+                      10: 'default 9-bit constellation',
+                      1: 'user constellation',
+                      1: 'factory OQPSK constellation',
+                      1: 'factory QPSK constellation',
+                      1: 'factory pi/4 DQPSK constellation',
+                      1: 'factor 3pi/8 8PSK constellation'})
 
-    self.add_parameter('external_modulation_coupling',
-        flags=Instrument.FLAG_GET, type=types.IntType,
-        format_map={0: 'AC (4 Hz high-pass)',
-                    1: 'DC'})
+      self.add_parameter('external_modulation_coupling',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
+          format_map={0: 'AC (4 Hz high-pass)',
+                      1: 'DC'})
 
-    self.add_parameter('pulse_modulation',
-        flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
-        format_map={3: 'square',
-                    4: 'noise (PRBS)',
-                    5: 'external',
-                    11: 'user waveform'})
-    self.add_parameter('pulse_modulation_width', format='%.09e',
-                       flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                       units='s', minval=1e-6, maxval=10., type=types.FloatType)
-    self.add_parameter('pulse_modulation_period', format='%.09e',
-                       flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                       units='s', minval=1e-6, maxval=10., type=types.FloatType)
+      self.add_parameter('pulse_modulation',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
+          format_map={3: 'square',
+                      4: 'noise (PRBS)',
+                      5: 'external',
+                      11: 'user waveform'})
+      self.add_parameter('pulse_modulation_width', format='%.09e',
+                         flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                         units='s', minval=1e-6, maxval=10., type=types.FloatType)
+      self.add_parameter('pulse_modulation_period', format='%.09e',
+                         flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+                         units='s', minval=1e-6, maxval=10., type=types.FloatType)
 
-    self.add_parameter('am_modulation_depth',
-        flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, units='%', minval=0, maxval=100., type=types.FloatType)
+      self.add_parameter('am_modulation_depth',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, units='%', minval=0, maxval=100., type=types.FloatType)
 
-    self.add_parameter('timebase',
-        flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
-        format_map={0: 'crystal',
-                    1: 'OCXO',
-                    2: 'rubidium',
-                    3: 'external'})
+      self.add_parameter('timebase',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
+          format_map={0: 'crystal',
+                      1: 'OCXO',
+                      2: 'rubidium',
+                      3: 'external'})
 
-    self.add_parameter('noise_mode',
-        flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
-        format_map={0: 'optimized for less than 100 kHz from carrier',
-                    1: 'optimized for more than 100 kHz from carrier'})
+      self.add_parameter('noise_mode',
+          flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.IntType,
+          format_map={0: 'optimized for less than 100 kHz from carrier',
+                      1: 'optimized for more than 100 kHz from carrier'})
 
-    status_codes ={0: 'normal',
-                  1: '20 MHz PLL unlocked',
-                  2: '100 MHz PLL unlocked',
-                  4: '19 MHz PLL unlocked',
-                  8: '1 GHz PLL unlocked',
-                  16: '4 GHz PLL unlocked',
-                  32: 'no timebase',
-                  64: 'rubidium oscillator unlocked',
-                  128: 'reserved status code',
-                  256: 'modulation overloaded',
-                  512: 'IQ modulation overloaded'}
-    self.__all_status_combinations = dict(
-        (status, ', '.join( status_codes[2**j] for j in range(0,8) if ((status>>j)&1) ))
-        for status in range(1, 2**8)
-      )
-    self.__all_status_combinations[0] = status_codes[0]
-    self.add_parameter('status_code',
-        flags=Instrument.FLAG_GET, type=types.IntType,
-        format_map=self.__all_status_combinations)
+      status_codes ={0: 'normal',
+                    1: '20 MHz PLL unlocked',
+                    2: '100 MHz PLL unlocked',
+                    4: '19 MHz PLL unlocked',
+                    8: '1 GHz PLL unlocked',
+                    16: '4 GHz PLL unlocked',
+                    32: 'no timebase',
+                    64: 'rubidium oscillator unlocked',
+                    128: 'reserved status code',
+                    256: 'modulation overloaded',
+                    512: 'IQ modulation overloaded'}
+      self.__all_status_combinations = dict(
+          (status, ', '.join( status_codes[2**j] for j in range(0,8) if ((status>>j)&1) ))
+          for status in range(1, 2**8)
+        )
+      self.__all_status_combinations[0] = status_codes[0]
+      self.add_parameter('status_code',
+          flags=Instrument.FLAG_GET, type=types.IntType,
+          format_map=self.__all_status_combinations)
 
-    self.add_function('reset')
-    self.add_function ('get_all')
+      self.add_function('reset')
+      self.add_function ('get_all')
 
 
-    if (reset):
-        self.reset()
-    else:
-        self.get_all()
+      if (reset):
+          self.reset()
+      else:
+          self.get_all()
+
+    except:
+      self._visainstrument.close()
+      raise
 
   def reset(self):
     '''

@@ -77,7 +77,7 @@ class RhodeSchwartz_FSEM30(Instrument):
         
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+        self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=10000)
         
         self._freq_unit = 1
         self._freq_unit_symbol = 'Hz'
@@ -123,7 +123,7 @@ class RhodeSchwartz_FSEM30(Instrument):
                            
         self.add_parameter('aver_count', type=types.IntType, format='%g',
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-                           minval=0, maxval=327 )                   
+                           minval=0, maxval=2000 )
                            
         self.add_parameter('sweeptime_auto', type=types.BooleanType,
                            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET)
@@ -301,8 +301,11 @@ class RhodeSchwartz_FSEM30(Instrument):
     
     def get_data(self,chan):
       self._visainstrument.write('FORM REAL,32')
-      raw = self._visainstrument.ask('TRAC? TRACE%s' % chan)
-      return np.array([self.__real32_byte_array_to_ndarray(raw)])[0]
+      return self._visainstrument.query_binary_values('TRAC? TRACE%s' % chan,
+                                                datatype='f',
+                                                is_big_endian=False,
+                                                container=np.array,
+                                                header_fmt='ieee')
       
 
 
@@ -440,7 +443,7 @@ class RhodeSchwartz_FSEM30(Instrument):
         
     def do_set_aver_count(self,count):
         '''
-        Number of averages per sweep. 0 is default and 32767 is max.
+        Number of averages per sweep.
         '''
         logging.debug('Setting sweep count to %s' % count)
         return self._visainstrument.write('SENS:AVER:COUN %s' % count)

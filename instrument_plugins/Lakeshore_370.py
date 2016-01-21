@@ -38,18 +38,15 @@ class Lakeshore_370(Instrument):
         Instrument.__init__(self, name)
 
         self._address = address
-    
-        visaargs = {}
+
+        self._visainstrument = visa.ResourceManager().open_resource('ASRL3',
+                                     timeout=5000.) # milliseconds
         if address.lower().startswith('asrl'):
           # These are for an RS-232 connection, values found in the LS manual
-          visaargs['parity'] = visa.odd_parity
-          visaargs['data_bits'] = 7
-          visaargs['stop_bits'] = 1
-        self._visa = visa.instrument(self._address,
-                                     term_chars='\n', # This is set on the physical screen (behind "Computer Interface")
-                                     timeout=10., # seconds
-                                     **visaargs)
-        
+          self._visainstrument.parity = visa.constants.Parity.odd
+          self._visainstrument.data_bits = 7
+          self._visainstrument.stop_bits = visa.constants.StopBits.one
+
         self._channels = kwargs.get('channels', (1, 2, 5, 6))
         
         self._logger = kwargs.get('logger', None)

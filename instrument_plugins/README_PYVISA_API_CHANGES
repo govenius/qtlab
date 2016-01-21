@@ -1,0 +1,25 @@
+The pyvisa API changed significantly around version 1.5 and 1.6, this
+means that old drivers may not work out-of-the-box.  Fortunately, the
+changes that concern most drivers are minor:
+
+1) Units for the 'timeout' parameter changed from seconds to
+   MILLISECONDS!!! (Not a problem if the instrument driver doesn't
+   specify a timeout.)
+
+2) The syntax for creating instruments changed, i.e., need to replace
+   "visa.instrument(address, timeout=2, term_chars='\n')" with:
+   
+      self._visainstrument = visa.ResourceManager().open_resource(address, timeout=2000)
+      self._visainstrument.read_termination = '\n'
+      self._visainstrument.write_termination = '\n'
+
+3) Ascii and binary data are now treated differently. If you need to
+   deal with non-ASCII data, you may need to use read_raw() and/or
+   write_raw() instead of just read() and write().
+
+
+See the notes on the pyvisa website for more details:
+https://pyvisa.readthedocs.org/en/stable/migrating.html
+
+Note: the old drivers should warn about this change as they were changed by running:
+find instrument_plugins -name '*.py' -type f -exec sed -i -r 's~^(\s*)(.+?=\s*visa\.instrument\s*.+)$~#>>>>>>>>>>>>>>\n\1assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"\n\1#\2\n#<<<<<<<<<<<<<<~' {} \;

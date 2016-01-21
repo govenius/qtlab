@@ -76,7 +76,10 @@ class Keithley_6430(Instrument):
 
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address, timeout=30) # timeout is in seconds (should be > source delay)
+        self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=30000) # timeout is in ms (should be > source delay)
+        self._visainstrument.read_termination = '\n'
+        self._visainstrument.write_termination = '\n'
+
         self._source_modes = ['VOLT', 'CURR']
         self._sense_modes = ['VOLT:DC', 'CURR:DC', 'RES']
 
