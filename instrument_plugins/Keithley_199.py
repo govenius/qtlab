@@ -25,7 +25,10 @@ class Keithley_199(Instrument):
         Instrument.__init__(self, name, tags=['measure'])
 
         self._address = address
-        self._visains = visa.instrument(address)
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visains = visa.instrument(address)
+#<<<<<<<<<<<<<<
 
         self.add_parameter('function', type=types.IntType,
                 flags=Instrument.FLAG_SET | Instrument.FLAG_SOFTGET,

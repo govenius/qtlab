@@ -83,7 +83,10 @@ class HP_8657(Instrument):
         lim = HP_8657.LIMITS[type]
 
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visainstrument = visa.instrument(self._address)
+#<<<<<<<<<<<<<<
         sleep(1)
 
         # Implement parameters

@@ -39,7 +39,10 @@ class Thorlabs_PM100(Instrument):
         Instrument.__init__(self, name)
 
         self._address = address
-        self._visa = visa.instrument(self._address,
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visa = visa.instrument(self._address,
+#<<<<<<<<<<<<<<
                         baud_rate=115200, data_bits=8, stop_bits=1,
                         parity=visa.no_parity, term_chars='\r\n')
 

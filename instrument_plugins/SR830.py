@@ -49,7 +49,10 @@ class SR830(Instrument):
         logging.info(__name__ + ' : Initializing instrument')
         Instrument.__init__(self, name, tags=['physical'])
         self._address = address
-        self._visainstrument = visa.instrument(self._address, timeout=5.)
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visainstrument = visa.instrument(self._address, timeout=5.)
+#<<<<<<<<<<<<<<
 
         self.add_parameter('mode',
            flags=Instrument.FLAG_SET,

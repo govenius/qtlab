@@ -59,7 +59,10 @@ class Tektronix_AWG520(Instrument):
 
 
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visainstrument = visa.instrument(self._address)
+#<<<<<<<<<<<<<<
         self._values = {}
         self._values['files'] = {}
         self._clock = clock

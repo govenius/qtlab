@@ -72,7 +72,10 @@ class Keithley_2700(Instrument):
 
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visainstrument = visa.instrument(self._address)
+#<<<<<<<<<<<<<<
         self._modes = ['VOLT:AC', 'VOLT:DC', 'CURR:AC', 'CURR:DC', 'RES',
             'FRES', 'TEMP', 'FREQ']
         self._change_display = change_display

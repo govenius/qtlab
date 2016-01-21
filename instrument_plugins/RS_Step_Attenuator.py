@@ -47,7 +47,10 @@ class RS_Step_Attenuator(Instrument):
 
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address)
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visainstrument = visa.instrument(self._address)
+#<<<<<<<<<<<<<<
 
         self.add_parameter('attenuation',
             flags=Instrument.FLAG_SET, units='dB', minval=1, maxval=139, type=types.IntType)

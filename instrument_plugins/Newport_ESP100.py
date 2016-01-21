@@ -38,7 +38,10 @@ class Newport_ESP100(Instrument):
     Instrument.__init__(self, name, tags=['physical'])
 
     self._address = address
-    self._visainstrument = visa.instrument(self._address)
+#>>>>>>>>>>>>>>
+    assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+    #self._visainstrument = visa.instrument(self._address)
+#<<<<<<<<<<<<<<
     
     # Add functions
     self.add_function('init_default')

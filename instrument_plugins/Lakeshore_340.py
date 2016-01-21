@@ -29,7 +29,10 @@ class Lakeshore_340(Instrument):
         Instrument.__init__(self, name)
 
         self._address = address
-        self._visa = visa.instrument(self._address)
+#>>>>>>>>>>>>>>
+        assert False, "pyvisa syntax has changed, tweak the line below according to the instructions in qtlab/instrument_plugins/README_PYVISA_API_CHANGES"
+        #self._visa = visa.instrument(self._address)
+#<<<<<<<<<<<<<<
         self._channels = ('A', 'B', 'C', 'D')
         
         self.add_parameter('identification',
