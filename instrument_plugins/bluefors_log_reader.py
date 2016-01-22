@@ -213,7 +213,7 @@ class bluefors_log_reader(Instrument):
           dd = self.__load_data(t, 'Channels %s.log',
                                 valueformats=formats )
 
-          if dd == None or len(dd) == 0: raise Exception('load_data returned %s.' % dd)
+          if (not isinstance(dd, np.ndarray)) or len(dd) == 0: raise Exception('load_data returned %s.' % dd)
 
           # Convert to dict
           # Not sure what the first value after the timestamp is... Code running status code?
@@ -248,7 +248,7 @@ class bluefors_log_reader(Instrument):
                                 valueformats=['f', 'i1'],
                                 usecols=(0,1,2+6*(channel-1)+3,2+6*(channel-1)+2))
 
-          if dd == None or len(dd) == 0: raise Exception('load_data returned %s.' % dd)
+          if (not isinstance(dd, np.ndarray)) or len(dd) == 0: raise Exception('load_data returned %s.' % dd)
 
           # replace value (2nd col) if the sensor was off (3rd col == 0)
           dd[dd[:,2] == 0, 1] = np.nan
@@ -775,7 +775,7 @@ class bluefors_log_reader(Instrument):
           # parse the data log files
           try:
             data = load_data(t)
-            if data == None or len(data) == 0: raise Exception('load_data returned %s.' % data)
+            if (not isinstance(data, np.ndarray)) or len(data) == 0: raise Exception('load_data returned %s.' % data)
           except Exception as e:
             logging.exception('Could not load %s at %s. Returning %s.' % (value_name, str(t), value_if_data_not_available))
             return value_if_data_not_available
@@ -871,10 +871,7 @@ class bluefors_log_reader(Instrument):
               ( d[2+i] for i in range(len(valueformats)) )
             )) for d in data ])
 
-          if all_data == None:
-            all_data = data
-          else:
-            all_data = np.concatenate((all_data, data), axis=0)
+          all_data = np.concatenate((all_data, data), axis=0) if isinstance(all_data, np.ndarray) else data
 
         except IOError as e:
           pass # file doesn't exist. this is fairly normal, especially if datestr is in the future
@@ -882,7 +879,7 @@ class bluefors_log_reader(Instrument):
         except Exception as e:
           logging.exception('Failed to load data from %s.' % str(fname))
 
-      if all_data == None:
+      if not isinstance(all_data, np.ndarray):
           logging.warn('No data loaded for t = %s. Last attempt was from %s.', str(t), fname)
 
       return all_data
