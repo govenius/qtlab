@@ -19,36 +19,28 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 from instrument import Instrument
-from time import time, sleep
-from lib import tcpinstrument
+from time import time
+import qt
+import visa
 import types
 import logging
 import re
 
 class Oxford_Mercury_IPS(Instrument):
     '''
-    This is the python driver for the Oxford Instruments IPS 120 Magnet Power Supply
+    This is the python driver for the Oxford Instruments IPS Magnet Power Supply
 
-    Usage:
-    Initialize with
-    <name> = instruments.create('name', 'Oxford_Mercury_IPS', address='<Instrument address>')
-    <Instrument address> = ASRL1::INSTR
-
-    Note: Since the ISOBUS allows for several instruments to be managed in parallel, the command
-    which is sent to the device starts with '@n', where n is the ISOBUS instrument number.
-
+    Choose remote --> ethernet --> SCPI on the device.
+    The VISA address should then look something like this: TCPIP0::<IP address>::7020::SOCKET
     '''
-#TODO: auto update script
-#TODO: get doesn't always update the wrapper! (e.g. when input is an int and output is a string)
 
-    def __init__(self, name, address, number=2):
+    def __init__(self, name, address):
         '''
         Initializes the Oxford Instruments IPS 120 Magnet Power Supply.
 
         Input:
             name (string)    : name of the instrument
-            address (string) : instrument address
-            number (int)     : ISOBUS instrument number
+            address (string) : instrument address [TCPIP0::<IP address>::7020::SOCKET]
 
         Output:
             None
@@ -58,68 +50,51 @@ class Oxford_Mercury_IPS(Instrument):
 
 
         self._address = address
-        self._number = number
-        #self._visainstrument = visa.SerialInstrument(self._address)
-        self._visainstrument = tcpinstrument.TCPInstrument(address, tcp_inactive_period = 30., tcp_min_time_between_connections = 0.5)
-        self._values = {}
-        #self._visainstrument.stop_bits = 2
+        self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=2000)
+        try:
+          self._visainstrument.read_termination = '\n'
+          self._visainstrument.write_termination = '\n'
 
-        #Add parameters
-        self.add_parameter('activity', type=types.StringType,
-            flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
-            format_map = {
-            "HOLD" : "Hold",
-            "RTOS" : "To set point",
-            "RTOZ" : "To zero",
-            "CLMP" : "Clamped"})
+          self._values = {}
 
-        self.add_parameter('current_setpoint', type=types.FloatType, units='A',
-             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
-             minval=-126., maxval=126.)
-        
-        self.add_parameter('current', type=types.FloatType, units='A',
-             flags=Instrument.FLAG_GET)
+          #Add parameters
+          self.add_parameter('idn', type=types.StringType, flags=Instrument.FLAG_GET, format='%.10s')
 
-        self.add_parameter('voltage', type=types.FloatType, units='V',
-             flags=Instrument.FLAG_GET)
+          self.add_parameter('activity', type=types.StringType,
+              flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+              format_map = {
+              "HOLD" : "Hold",
+              "RTOS" : "To set point",
+              "RTOZ" : "To zero",
+              "CLMP" : "Clamped"})
 
-        # self.add_parameter('ramp_rate', type=types.FloatType, units='A/min',
-        #      flags=Instrument.FLAG_GET)
+          self.add_parameter('current_setpoint', type=types.FloatType, units='A',
+               flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+               minval=-126., maxval=126.)
 
-        self.add_parameter('ramp_rate_setpoint', type=types.FloatType, units='A/min',
-             flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
-             minval=0., maxval=1200.)
+          self.add_parameter('current', type=types.FloatType, units='A',
+               flags=Instrument.FLAG_GET)
 
+          self.add_parameter('persistent_current', type=types.FloatType, units='A',
+               flags=Instrument.FLAG_GET)
 
+          self.add_parameter('voltage', type=types.FloatType, units='V',
+               flags=Instrument.FLAG_GET)
 
-        # self.add_parameter('sweeprate_current', type=types.FloatType,
-            # flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
-            # minval=0, maxval=240)
-        # self.add_parameter('system_status', type=types.IntType,
-            # flags=Instrument.FLAG_GET,
-            # format_map = {
-            # 0 : "Normal",
-            # 1 : "Quenched",
-            # 2 : "Over Heated",
-            # 4 : "Warming Up",
-            # 8 : "Fault"})
-        # self.add_parameter('system_status2', type=types.IntType,
-            # flags=Instrument.FLAG_GET,
-            # format_map = {
-            # 0 : "Normal",
-            # 1 : "On positive voltage limit",
-            # 2 : "On negative voltage limit",
-            # 4 : "Outside negative current limit",
-            # 8 : "Outside positive current limit"
-            # })
-        #self.add_parameter('current', type=types.FloatType,
-        #    flags=Instrument.FLAG_GET)
-        #self.add_parameter('voltage', type=types.FloatType,
-        #    flags=Instrument.FLAG_GET)
+          self.add_parameter('ramp_rate_setpoint', type=types.FloatType, units='A/min',
+               flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET,
+               minval=0., maxval=1200.)
 
-        # Add functions
-        self.add_function('get_all')
-        self.get_all()
+          self.add_parameter('switch_heater_on', type=types.BooleanType,
+               flags=Instrument.FLAG_GETSET | Instrument.FLAG_GET_AFTER_SET)
+
+          # Add functions
+          self.add_function('get_all')
+          self.get_all()
+
+        except:
+          self._visainstrument.close()
+          raise
 
     def get_all(self):
         '''
@@ -133,19 +108,18 @@ class Oxford_Mercury_IPS(Instrument):
             None
         '''
         logging.info(__name__ + ' : reading all settings from instrument')
-        #self.get_current()
+        self.get_idn()
         self.get_voltage()
-        #self.get_magnet_current()
         self.get_current_setpoint()
         self.get_current()
-        #self.get_sweeprate_current()
+        self.get_persistent_current()
         self.get_activity()
         self.get_ramp_rate_setpoint()
-#        self.get_ramp_rate()
+        self.get_switch_heater_on()
 
 
     # Functions
-    def _execute(self, message):
+    def _query(self, message):
         '''
         Write a command to the device
 
@@ -156,53 +130,13 @@ class Oxford_Mercury_IPS(Instrument):
             None
         '''
         logging.debug(__name__ + ' : Send the following command to the device: %s' % message)
-        result = self._visainstrument.ask('%s\n' % (message), end_of_message='\n')
-        if result.find('?') >= 0:
-            print "Error: Command %s not recognized" % message
-        else:
-            return result
+        result = self._visainstrument.query('%s' % (message))
+        qt.msleep(0.1)
+        return result
 
-    def identify(self):
-        '''
-        Identify the device
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        logging.info(__name__ + ' : Identify the device')
-        return self._execute('*IDN?')
-
-    def examine(self):
-        '''
-        Examine the status of the device
-
-        Input:
-            None
-
-        Output:
-            None
-        '''
-        logging.info(__name__ + ' : Examine status')
-
-        #print 'Mode: '
-        #print self.get_mode()
-
-    # def do_get_current(self):
-        # '''
-        # Demand output current of device
-
-        # Input:
-            # None
-
-        # Output:
-            # result (float) : output current in Amp
-        # '''
-        # logging.info(__name__ + ' : Read output current')
-        # result = self._execute('R0')
-        # return float(result.replace('R',''))
+    def do_get_idn(self):
+        result = self._query('*IDN?').strip()
+        return result[4:] if result.startswith('IDN:') else result
 
     def do_get_current_setpoint(self):
         '''
@@ -214,7 +148,7 @@ class Oxford_Mercury_IPS(Instrument):
         Output:
             result (float) : Target current in Amp
         '''
-        result = self._execute('READ:DEV:GRPZ:PSU:SIG:CSET')
+        result = self._query('READ:DEV:GRPZ:PSU:SIG:CSET')
         logging.debug(__name__ + ' : Read set point (target current): %s')
 
         m = re.match(r'STAT:DEV:GRPZ:PSU:SIG:CSET:(.+?)A', result)
@@ -236,7 +170,7 @@ class Oxford_Mercury_IPS(Instrument):
         '''
         logging.debug(__name__ + ' : Setting target current to %s' % current)
         cmd = 'SET:DEV:GRPZ:PSU:SIG:CSET:%s' % current
-        result = self._execute(cmd)
+        result = self._query(cmd)
         
         # verify that the command was correctly parsed
         m = re.match(r'STAT:SET:DEV:GRPZ:PSU:SIG:CSET:(.+?):VALID', result)
@@ -253,10 +187,31 @@ class Oxford_Mercury_IPS(Instrument):
         Output:
             result (float) : Current in amp.
         '''
-        result = self._execute('READ:DEV:GRPZ:PSU:SIG:CURR')
+        result = self._query('READ:DEV:GRPZ:PSU:SIG:CURR')
         logging.debug(__name__ + ' : Read current: %s')
 
         m = re.match(r'STAT:DEV:GRPZ:PSU:SIG:CURR:(.+?)A', result)
+        if m == None or len(m.groups()) != 1: raise Exception('Could not parse the reply: %s' % result)
+
+        try:        
+          return float(m.groups()[0])
+        except Exception as e:
+          raise e
+
+    def do_get_persistent_current(self):
+        '''
+        Return the persistent current.
+
+        Input:
+            None
+
+        Output:
+            result (float) : Current in amp.
+        '''
+        result = self._query('READ:DEV:GRPZ:PSU:SIG:PCUR')
+        logging.debug(__name__ + ' : Read persistent current: %s')
+
+        m = re.match(r'STAT:DEV:GRPZ:PSU:SIG:PCUR:(.+?)A', result)
         if m == None or len(m.groups()) != 1: raise Exception('Could not parse the reply: %s' % result)
 
         try:        
@@ -276,7 +231,7 @@ class Oxford_Mercury_IPS(Instrument):
         Output:
             result (float) : action status.
         '''
-        result = self._execute('READ:DEV:GRPZ:PSU:ACTN')
+        result = self._query('READ:DEV:GRPZ:PSU:ACTN')
         logging.debug(__name__ + ' : Read activity: %s' % result)
 
         m = re.match(r'STAT:DEV:GRPZ:PSU:ACTN:(.+?)$', result)
@@ -301,46 +256,11 @@ class Oxford_Mercury_IPS(Instrument):
         '''
         logging.debug(__name__ + ' : Setting activity to %s' % activity)
         cmd = 'SET:DEV:GRPZ:PSU:ACTN:%s' % activity
-        result = self._execute(cmd)
+        result = self._query(cmd)
         
         # verify that the command was correctly parsed
         m = re.match(r'STAT:SET:DEV:GRPZ:PSU:ACTN:(.+?):VALID', result)
         if m == None or len(m.groups()) != 1: raise Exception('The IPS did not acknowledge parsing %s correctly, instead got: %s' % (cmd, result))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # def do_get_ramp_rate(self):
-    #     '''
-    #     Most recent current rate reading
-
-    #     Input:
-    #         None
-
-    #     Output:
-    #         result (float) : Current ramp rate in A/min
-    #     '''
-    #     result = self._execute('READ:DEV:GRPZ:PSU:SIG:RCUR')
-    #     logging.debug(__name__ + ' : Read current: %s')
-
-    #     m = re.match(r'STAT:DEV:GRPZ:PSU:SIG:RCUR:(.+?)', result)
-    #     if m == None or len(m.groups()) != 1: raise Exception('Could not parse the reply: %s' % result)
-
-    #     try:        
-    #       return float(m.groups()[0])
-    #     except Exception as e:
-    #       raise e
-
 
 
     def do_set_ramp_rate_setpoint(self, ramp_rate):
@@ -352,7 +272,7 @@ class Oxford_Mercury_IPS(Instrument):
         '''
         logging.debug(__name__ + ' : Setting current rate  current to %s' % ramp_rate)
         cmd = 'SET:DEV:GRPZ:PSU:SIG:RCST:%s' % ramp_rate
-        result = self._execute(cmd)
+        result = self._query(cmd)
         
         # verify that the command was correctly parsed
         m = re.match(r'STAT:SET:DEV:GRPZ:PSU:SIG:RCST:(.+?):VALID', result)
@@ -368,7 +288,7 @@ class Oxford_Mercury_IPS(Instrument):
         Output:
             result (float) : current rate in A / min
         '''
-        result = self._execute('READ:DEV:GRPZ:PSU:SIG:RCST')
+        result = self._query('READ:DEV:GRPZ:PSU:SIG:RCST')
         logging.debug(__name__ + ' : Read current rate set point: %s')
 
         m = re.match(r'STAT:DEV:GRPZ:PSU:SIG:RCST:(.+?)A/m', result)
@@ -390,7 +310,7 @@ class Oxford_Mercury_IPS(Instrument):
         Output:
             result (float) : Voltage in volts.
         '''
-        result = self._execute('READ:DEV:GRPZ:PSU:SIG:VOLT')
+        result = self._query('READ:DEV:GRPZ:PSU:SIG:VOLT')
         logging.debug(__name__ + ' : Read voltage: %s')
 
         m = re.match(r'STAT:DEV:GRPZ:PSU:SIG:VOLT:(.+?)V', result)
@@ -401,117 +321,30 @@ class Oxford_Mercury_IPS(Instrument):
         except Exception as e:
           raise e
 
+    def do_get_switch_heater_on(self):
+        '''
+        Is the switch heater on.
+        '''
+        result = self._query('READ:DEV:GRPZ:PSU:SIG:SWHT')
+        logging.debug(__name__ + ' : Read switch heater status: %s')
 
+        m = re.match(r'STAT:DEV:GRPZ:PSU:SIG:SWHT:(OFF|ON)', result)
+        if m == None or m.groups()[0].strip().upper() not in ['ON', 'OFF']:
+            raise Exception('Could not parse the reply: %s' % result)
 
+        try:
+          return m.groups()[0] == 'ON'
+        except Exception as e:
+          raise e
 
-    # def do_get_sweeprate_current(self):
-        # '''
-        # Return sweep rate (current)
+    def do_set_switch_heater_on(self, val):
+        '''
+        Set the switch heater on/off.
+        '''
+        logging.debug(__name__ + ' : Setting switch heater status to %s' % val)
+        cmd = 'SET:DEV:GRPZ:PSU:SIG:SWHN:%s' % ('ON' if val else 'OFF')
+        result = self._query(cmd)
 
-        # Input:
-            # None
-
-        # Output:
-            # result (float) : sweep rate in Amp/min
-        # '''
-        # logging.debug(__name__ + ' : Read sweep rate (current)')
-        # result = self._execute('R6')
-        # return float(result.replace('R',''))
-
-    # def do_set_sweeprate_current(self, sweeprate):
-        # '''
-        # Set sweep rate (current)
-
-        # Input:
-            # sweeprate(float) : Sweep rate in Amps/min.
-
-        # Output:
-            # None
-        # '''
-        # logging.debug(__name__ + ' : Set sweep rate (current) to %s Amps/min' % sweeprate)
-        # self._execute('S%s' % sweeprate)
-        # self.get_sweeprate_field() # Update sweeprate_field
-
-    # def do_get_activity(self):
-        # '''
-        # Get the activity of the magnet. Possibilities: Hold, Set point, Zero or Clamp.
-        # Input:
-            # None
-
-        # Output:
-            # result(str) : "Hold", "Set point", "Zero" or "Clamp".
-        # '''
-        # result = self._execute('X')
-        # logging.debug(__name__ + ' : Get activity of the magnet.')
-        # return int(result[4])
-
-    # def do_set_activity(self, mode):
-        # '''
-        # Set the activity to Hold, To Set point or To Zero.
-
-        # Input:
-            # mode (int) :
-            # 0 : "Hold",
-            # 1 : "To set point",
-            # 2 : "To zero"
-
-            # 4 : "Clamped" (not included)
-
-        # Output:
-            # None
-        # '''
-        # status = {
-        # 0 : "Hold",
-        # 1 : "To set point",
-        # 2 : "To zero"
-        # }
-        # if status.__contains__(mode):
-            # logging.debug(__name__ + ' : Setting magnet activity to %s' % status.get(mode, "Unknown"))
-            # self._execute('A%s' % mode)
-        # else:
-            # print 'Invalid mode inserted.'
-
-    # def hold(self):
-        # '''
-        # Set the device activity to "Hold"
-        # Input:
-            # None
-        # Output:
-            # None
-        # '''
-        # self.set_activity(0)
-        # self.get_activity()
-
-    # def to_setpoint(self):
-        # '''
-        # Set the device activity to "To set point". This initiates a sweep.
-        # Input:
-            # None
-        # Output:
-            # None
-        # '''
-        # self.set_activity(1)
-        # self.get_activity()
-
-    # def to_zero(self):
-        # '''
-        # Set the device activity to "To zero". This sweeps te magnet back to zero.
-        # Input:
-            # None
-        # Output:
-            # None
-        # '''
-        # self.set_activity(2)
-        # self.get_activity()
-
-    # def get_changed(self):
-        # print "Current: "
-        # print self.get_current()
-        # print "Field: "
-        # print self.get_field()
-        # print "Magnet current: "
-        # print self.get_magnet_current()
-        # print "Heater current: "
-        # print self.get_heater_current()
-        # print "Mode: "
-        # print self.get_mode()
+        # verify that the command was correctly parsed
+        m = re.match(r'STAT:SET:DEV:GRPZ:PSU:SIG:SWHN:(.+?):VALID', result)
+        if m == None or len(m.groups()) != 1: raise Exception('The IPS did not acknowledge parsing %s correctly, instead got: %s' % (cmd, result))
