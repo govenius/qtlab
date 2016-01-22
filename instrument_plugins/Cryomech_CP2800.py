@@ -71,7 +71,10 @@ class Cryomech_CP2800(Instrument):
     Instrument.__init__(self, name)
 
     self._address = address
-  
+    self._serial_min_time_between_commands = 0.020 # s
+    self._serial_last_access_time = 0
+    self._serial_reservation_counter = 0
+
     m = re.match(r'(?i)((com)|(/dev/ttys))(\d+)', address)
     try:
       self._serialportno = int(m.group(4)) - (1 if m.group(1).lower() == 'com' else 0)
@@ -223,26 +226,38 @@ class Cryomech_CP2800(Instrument):
     qt.msleep(.5)
 
   def get_all(self):
-    self.get_on()
-    self.get_hours_of_operation()
-    self.get_clock_battery_ok()
-    self.get_error_code()
-    self.get_water_in_temperature()
-    self.get_water_out_temperature()
-    self.get_helium_temperature()
-    self.get_oil_temperature()
-    self.get_cpu_temperature()
-    self.get_pressure_high_side()
-    self.get_pressure_low_side()
-    self.get_pressure_high_side_average()
-    self.get_pressure_low_side_average()
+    self._reserve_serial()
+    try:
+      self.get_on()
+      self.get_hours_of_operation()
+      self.get_clock_battery_ok()
+      self.get_error_code()
+      self.get_water_in_temperature()
+      self.get_water_out_temperature()
+      self.get_helium_temperature()
+      self.get_oil_temperature()
+      self.get_cpu_temperature()
+      self.get_pressure_high_side()
+      self.get_pressure_low_side()
+      self.get_pressure_high_side_average()
+      self.get_pressure_low_side_average()
+    finally:
+      self._release_serial()
 
-  def __ask(self, msg):
-    logging.debug('Sending %s', ["0x%02x" % ord(c) for c in msg])
-    
-    for attempt in range(3):
-      try:
-        serial_connection = serial.Serial(self._serialportno,
+  def _reserve_serial(self):
+    '''
+    Counter based opening/closing of the serial connection.
+
+    Using _reserve_serial() and _release_serial explicitly
+    prevents the session from being closed between each command.
+    Used, e.g., in get_all().
+    '''
+    self._serial_reservation_counter += 1
+    time_to_sleep = ( self._serial_min_time_between_commands
+                      - (time.time() - self._serial_last_access_time) )
+    if time_to_sleep > 0: qt.msleep(time_to_sleep)
+    if self._serial_reservation_counter == 1:
+      self._serial_connection = serial.Serial(self._serialportno,
             baudrate=9600,
             bytesize=8,
             dsrdtr=False,
@@ -252,22 +267,36 @@ class Cryomech_CP2800(Instrument):
             stopbits=1,
             timeout=1.,
             writeTimeout=None)
-        try:
-          serial_connection.write(msg)
-          m = ''
-          while len(m) < 1 or m[-1] != '\r':
-            lastlen = len(m)
-            m += serial_connection.read()
-            if lastlen == len(m): assert False, 'Timeout on serial port read.'
-          logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
-          return m
-        finally:
-          serial_connection.close()
 
-        qt.msleep(1. + attempt**2)
+  def _release_serial(self):
+    ''' Counter based opening/closing of the serial connection. '''
+    assert self._serial_reservation_counter > 0, 'Trying to release a serial session that has not been reserved! (counter = %s)' % (self._serial_reservation_counter)
+    self._serial_reservation_counter -= 1
+    self._serial_last_access_time = time.time()
+    if self._serial_reservation_counter == 0:
+      self._serial_connection.close()
+
+  def _ask(self, msg):
+    logging.debug('Sending %s', ["0x%02x" % ord(c) for c in msg])
+
+    for attempt in range(3):
+      try:
+        self._reserve_serial()
+        self._serial_connection.write(msg)
+        m = ''
+        while len(m) < 1 or m[-1] != '\r':
+          lastlen = len(m)
+          m += self._serial_connection.read()
+          if lastlen == len(m): assert False, 'Timeout on serial port read.'
+        logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
+        return m
         
       except:
         logging.exception('Attempt %d to communicate with compressor failed', attempt)
+        qt.msleep(1. + attempt**2)
+
+      finally:
+        self._release_serial()
 
     assert False, 'All attempts to communicate with the compressor failed.'
 
@@ -311,7 +340,7 @@ class Cryomech_CP2800(Instrument):
       if msg[i] in esc.keys(): msg = msg[:i] + esc[msg[i]] + msg[i+1:]
 
     # query instrument
-    r = self.__ask(msg)
+    r = self._ask(msg)
 
     # unescape special bytes
     invesc = dict( (v,k) for k,v in esc.iteritems() )
