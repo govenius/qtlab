@@ -17,6 +17,9 @@ changes that concern most drivers are minor:
    deal with non-ASCII data, you may need to use read_raw() and/or
    write_raw() instead of just read() and write().
 
+4) Termination characters (\r,\n) are no longer automatically stripped if
+   you don't manually specify the read_termination.
+
 
 See the notes on the pyvisa website for more details:
 https://pyvisa.readthedocs.org/en/stable/migrating.html
