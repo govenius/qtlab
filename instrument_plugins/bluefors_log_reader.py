@@ -38,7 +38,7 @@ class bluefors_log_reader(Instrument):
     <name> = instruments.create('<name>', 'bluefors_log_reader', address='<path_to_log_files>', reset=<bool>)
     '''
 
-    def __init__(self, name, address, reset=False):
+    def __init__(self, name, address, reset=False, temperature_channels=(1,2,5,6)):
         '''
         Initializes the bluefors_log_reader.
 
@@ -57,7 +57,7 @@ class bluefors_log_reader(Instrument):
         self._heater_current_to_t6_calibration_ends = 0.006 # in amps
         self._heater_current_to_t6_polyfit_coefficients = np.array([-2.07985, 1.97048e3, -1.71080e6, 8.57267e8, - 2.25600e11, 2.95946e13, -1.52644e15]) # for current in A, gives log10(T/K)
 
-        self._tchannels = (1,2,5,6)
+        self._tchannels = temperature_channels
         self._rchannels = self._tchannels
         self._pchannels = (1,2,3,4,5,6)
         
