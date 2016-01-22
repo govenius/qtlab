@@ -15,56 +15,57 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-import time
-import logging
-try:
-    from visa import *
-    from pyvisa import vpp43
-except:
-    logging.warning('VISA not available')
+assert False, 'Deprecated: configure your visa provider directly in your pyvisa configuration (see https://pyvisa.readthedocs.org/en/stable/configuring.html).'
 
-def get_navail(visains):
-    '''
-    Return number of bytes available to read from visains.
-    '''
-    return vpp43.get_attribute(visains, vpp43.VI_ATTR_ASRL_AVAIL_NUM)
+# import time
+# import logging
+# try:
+#     from visa import *
+#     from pyvisa import vpp43
+# except:
+#     logging.warning('VISA not available')
 
-def wait_data(visains, nbytes=1, maxdelay=1.0):
-    '''
-    Wait for maxdelay seconds for data available to read from visains.
-    The loop consist of 1msec delays.
-    '''
-    start = exact_time()
-    while exact_time() - start < maxdelay:
-        if get_navail(visains) >= nbytes:
-            return True
-        time.sleep(0.001)
-    return False
+# def get_navail(visains):
+#     '''
+#     Return number of bytes available to read from visains.
+#     '''
+#     return vpp43.get_attribute(visains, vpp43.VI_ATTR_ASRL_AVAIL_NUM)
 
-def readn(visains, n):
-    return vpp43.read(visains, n)
+# def wait_data(visains, nbytes=1, maxdelay=1.0):
+#     '''
+#     Wait for maxdelay seconds for data available to read from visains.
+#     The loop consist of 1msec delays.
+#     '''
+#     start = exact_time()
+#     while exact_time() - start < maxdelay:
+#         if get_navail(visains) >= nbytes:
+#             return True
+#         time.sleep(0.001)
+#     return False
 
-_added_filter = False
-def read_all(visains):
-    """
-    Read all available data from the input buffer of visins.
-    """
+# def readn(visains, n):
+#     return vpp43.read(visains, n)
 
-    global _added_filter
+# _added_filter = False
+# def read_all(visains):
+#     """
+#     Read all available data from the input buffer of visins.
+#     """
 
-    if not _added_filter:
-        warnings.filterwarnings("ignore", "VI_SUCCESS_MAX_CNT")
-        _added_filter = True
+#     global _added_filter
 
-    try:
-        buf = ""
-        blen = get_navail(visains)
-        while blen > 0:
-            chunk = vpp43.read(visains, blen)
-            buf += chunk
-            blen = get_navail(visains)
-    except:
-        pass
+#     if not _added_filter:
+#         warnings.filterwarnings("ignore", "VI_SUCCESS_MAX_CNT")
+#         _added_filter = True
 
-    return buf
+#     try:
+#         buf = ""
+#         blen = get_navail(visains)
+#         while blen > 0:
+#             chunk = vpp43.read(visains, blen)
+#             buf += chunk
+#             blen = get_navail(visains)
+#     except:
+#         pass
 
+#     return buf
