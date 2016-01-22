@@ -39,259 +39,266 @@ class Lakeshore_370(Instrument):
 
         self._address = address
 
-        self._visainstrument = visa.ResourceManager().open_resource('ASRL3',
-                                     timeout=5000.) # milliseconds
-        if address.lower().startswith('asrl'):
-          # These are for an RS-232 connection, values found in the LS manual
-          self._visainstrument.parity = visa.constants.Parity.odd
-          self._visainstrument.data_bits = 7
-          self._visainstrument.stop_bits = visa.constants.StopBits.one
+        self._visainstrument = visa.ResourceManager().open_resource(self._address,
+                                                                    timeout=5000.) # milliseconds
+        try:
+          if address.lower().startswith('asrl'):
+            # These are for an RS-232 connection, values found in the LS manual
+            self._visainstrument.parity = visa.constants.Parity.odd
+            self._visainstrument.data_bits = 7
+            self._visainstrument.stop_bits = visa.constants.StopBits.one
+          self._visainstrument.read_termination = '\r\n'
+          self._visainstrument.write_termination = '\n'
 
-        self._channels = kwargs.get('channels', (1, 2, 5, 6))
-        
-        self._logger = kwargs.get('logger', None)
-        
-        self.add_parameter('identification',
-            flags=Instrument.FLAG_GET)
-            
-        self.add_parameter('common_mode_reduction',
-            flags=Instrument.FLAG_GET,
-            type=types.BooleanType)
-            
-        self.add_parameter('guard_drive',
-            flags=Instrument.FLAG_GET,
-            type=types.BooleanType)
+          self._channels = kwargs.get('channels', (1, 2, 5, 6))
 
-        self.add_parameter('scanner_auto',
-            flags=Instrument.FLAG_GETSET,
-            type=types.BooleanType)
-            
-        self.add_parameter('scanner_channel',
-            flags=Instrument.FLAG_GETSET,
-            type=types.IntType,
-            format_map=dict(zip(self._channels,self._channels)))
+          self._logger = kwargs.get('logger', None)
 
-        self.add_parameter('kelvin',
-            flags=Instrument.FLAG_GET,
-            type=types.FloatType,
-            channels=self._channels,
-            units='K')
+          self.add_parameter('identification',
+              flags=Instrument.FLAG_GET)
 
-        self.add_parameter('resistance',
-            flags=Instrument.FLAG_GET,
-            type=types.FloatType,
-            channels=self._channels,
-            units='Ohm')
+          self.add_parameter('common_mode_reduction',
+              flags=Instrument.FLAG_GET,
+              type=types.BooleanType)
 
-        self.add_parameter('resistance_range',
-            flags=Instrument.FLAG_GET,
-            type=types.StringType,
-            channels=self._channels,
-            format_map={
-                1: '2 mOhm',
-                2: '6.32 mOhm',
-                3: '20 mOhm',
-                4: '63.2 mOhm',
-                5: '200 mOhm',
-                6: '632 mOhm',
-                7: '2 Ohm',
-                8: '6.32 Ohm',
-                9: '20 Ohm',
-                10: '63.2 Ohm',
-                11: '200 Ohm',
-                12: '632 Ohm',
-                13: '2 kOhm',
-                14: '6.32 kOhm',
-                15: '20 kOhm',
-                16: '63.2 kOhm',
-                17: '200 kOhm',
-                18: '632 kOhm',
-                19: '2 MOhm',
-                20: '6.32 MOhm',
-                21: '20 MOhm',
-                22: '63.2 MOhm'
-                })
+          self.add_parameter('guard_drive',
+              flags=Instrument.FLAG_GET,
+              type=types.BooleanType)
 
-        self.add_parameter('excitation_mode',
-            flags=Instrument.FLAG_GET,
-            type=types.IntType,
-            channels=self._channels,
-            format_map={
-                0: 'voltage',
-                1: 'current'
-                })
+          self.add_parameter('scanner_auto',
+              flags=Instrument.FLAG_GETSET,
+              type=types.BooleanType)
 
-        self.add_parameter('excitation_on',
-            flags=Instrument.FLAG_GET,
-            type=types.BooleanType,
-            channels=self._channels)
+          self.add_parameter('scanner_channel',
+              flags=Instrument.FLAG_GETSET,
+              type=types.IntType,
+              format_map=dict(zip(self._channels,self._channels)))
 
-        self.add_parameter('excitation_range',
-            flags=Instrument.FLAG_GETSET,
-            type=types.StringType,
-            channels=self._channels,
-            format_map={
-                1: '2 uV or 1 pA',
-                2: '6.32 uV or 3.16 pA',
-                3: '20 uV or 10 pA',
-                4: '63.2 uV or 31.6 pA',
-                5: '200 uV or 100 pA',
-                6: '632 uV or 316 pA',
-                7: '2 mV or 1 nA',
-                8: '6.32 mV or 3.16 nA',
-                9: '20 mV or 10 nA',
-                10: '63.2 mV or 31.6 nA',
-                11: '200 mV or 100 nA',
-                12: '632 mV or 316nA',
-                13: '1 uA',
-                14: '3.16 uA',
-                15: '10 uA',
-                16: '31.6 uA',
-                17: '100 uA',
-                18: '316 uA',
-                19: '1 mA',
-                20: '3,16 mA',
-                21: '10 mA',
-                22: '31.6 mA'
-                })
+          self.add_parameter('kelvin',
+              flags=Instrument.FLAG_GET,
+              type=types.FloatType,
+              channels=self._channels,
+              units='K')
 
-        self.add_parameter('autorange',
-            flags=Instrument.FLAG_GET,
-            type=types.BooleanType,
-            channels=self._channels)
+          self.add_parameter('resistance',
+              flags=Instrument.FLAG_GET,
+              type=types.FloatType,
+              channels=self._channels,
+              units='Ohm')
 
-        self.add_parameter('scanner_dwell_time',
-            flags=Instrument.FLAG_GET,
-            type=types.FloatType,
-            units='s',
-            channels=self._channels)
+          self.add_parameter('resistance_range',
+              flags=Instrument.FLAG_GET,
+              type=types.StringType,
+              channels=self._channels,
+              format_map={
+                  1: '2 mOhm',
+                  2: '6.32 mOhm',
+                  3: '20 mOhm',
+                  4: '63.2 mOhm',
+                  5: '200 mOhm',
+                  6: '632 mOhm',
+                  7: '2 Ohm',
+                  8: '6.32 Ohm',
+                  9: '20 Ohm',
+                  10: '63.2 Ohm',
+                  11: '200 Ohm',
+                  12: '632 Ohm',
+                  13: '2 kOhm',
+                  14: '6.32 kOhm',
+                  15: '20 kOhm',
+                  16: '63.2 kOhm',
+                  17: '200 kOhm',
+                  18: '632 kOhm',
+                  19: '2 MOhm',
+                  20: '6.32 MOhm',
+                  21: '20 MOhm',
+                  22: '63.2 MOhm'
+                  })
 
-        self.add_parameter('scanner_pause_time',
-            flags=Instrument.FLAG_GET,
-            type=types.FloatType,
-            units='s',
-            channels=self._channels)
+          self.add_parameter('excitation_mode',
+              flags=Instrument.FLAG_GET,
+              type=types.IntType,
+              channels=self._channels,
+              format_map={
+                  0: 'voltage',
+                  1: 'current'
+                  })
 
-        self.add_parameter('filter_on',
-            flags=Instrument.FLAG_GET,
-            type=types.BooleanType,
-            channels=self._channels)
+          self.add_parameter('excitation_on',
+              flags=Instrument.FLAG_GET,
+              type=types.BooleanType,
+              channels=self._channels)
 
-        self.add_parameter('filter_settle_time',
-            flags=Instrument.FLAG_GETSET,
-            type=types.FloatType,
-            units='s',
-            channels=self._channels)
+          self.add_parameter('excitation_range',
+              flags=Instrument.FLAG_GETSET,
+              type=types.StringType,
+              channels=self._channels,
+              format_map={
+                  1: '2 uV or 1 pA',
+                  2: '6.32 uV or 3.16 pA',
+                  3: '20 uV or 10 pA',
+                  4: '63.2 uV or 31.6 pA',
+                  5: '200 uV or 100 pA',
+                  6: '632 uV or 316 pA',
+                  7: '2 mV or 1 nA',
+                  8: '6.32 mV or 3.16 nA',
+                  9: '20 mV or 10 nA',
+                  10: '63.2 mV or 31.6 nA',
+                  11: '200 mV or 100 nA',
+                  12: '632 mV or 316nA',
+                  13: '1 uA',
+                  14: '3.16 uA',
+                  15: '10 uA',
+                  16: '31.6 uA',
+                  17: '100 uA',
+                  18: '316 uA',
+                  19: '1 mA',
+                  20: '3,16 mA',
+                  21: '10 mA',
+                  22: '31.6 mA'
+                  })
 
-        self.add_parameter('filter_reset_threshold',
-            flags=Instrument.FLAG_GET,
-            type=types.FloatType,
-            units='%',
-            channels=self._channels)
+          self.add_parameter('autorange',
+              flags=Instrument.FLAG_GET,
+              type=types.BooleanType,
+              channels=self._channels)
 
-        self._heater_ranges = {
-            0: 'off',
-            1: '31.6 uA',
-            2: '100 uA',
-            3: '316 uA',
-            4: '1 mA',
-            5: '3.16 mA',
-            6: '10 mA',
-            7: '31.6 mA',
-            8: '100 mA' }
-        self.add_parameter('heater_range',
-            flags=Instrument.FLAG_GETSET,
-            type=types.IntType,
-            format_map=self._heater_ranges)
+          self.add_parameter('scanner_dwell_time',
+              flags=Instrument.FLAG_GET,
+              type=types.FloatType,
+              units='s',
+              channels=self._channels)
 
-        self.add_parameter('heater_power',
-            flags=Instrument.FLAG_GET,
-            type=types.FloatType,
-            units='W or %')
+          self.add_parameter('scanner_pause_time',
+              flags=Instrument.FLAG_GET,
+              type=types.FloatType,
+              units='s',
+              channels=self._channels)
 
-        self.add_parameter('heater_status',
-            flags=Instrument.FLAG_GET,
-            type=types.IntType,
-            format_map={
-                0: 'OK',
-                1: 'heater open error'
-                })
+          self.add_parameter('filter_on',
+              flags=Instrument.FLAG_GET,
+              type=types.BooleanType,
+              channels=self._channels)
 
-        self.add_parameter('mode',
-            flags=Instrument.FLAG_GETSET,
-            type=types.IntType,
-            format_map={0: 'Local', 1: 'Remote', 2: 'Remote, local lock'})
+          self.add_parameter('filter_settle_time',
+              flags=Instrument.FLAG_GETSET,
+              type=types.FloatType,
+              units='s',
+              channels=self._channels)
 
-        self.add_parameter('temperature_control_mode',
-            flags=Instrument.FLAG_GETSET,
-            type=types.IntType,
-            format_map={
-                1: 'closed loop PID',
-                2: 'Zone tuning',
-                3: 'open loop',
-                4: 'off'
-                })
+          self.add_parameter('filter_reset_threshold',
+              flags=Instrument.FLAG_GET,
+              type=types.FloatType,
+              units='%',
+              channels=self._channels)
 
-        self.add_parameter('temperature_control_pid',
-            flags=Instrument.FLAG_GETSET,
-            type=types.TupleType)
+          self._heater_ranges = {
+              0: 'off',
+              1: '31.6 uA',
+              2: '100 uA',
+              3: '316 uA',
+              4: '1 mA',
+              5: '3.16 mA',
+              6: '10 mA',
+              7: '31.6 mA',
+              8: '100 mA' }
+          self.add_parameter('heater_range',
+              flags=Instrument.FLAG_GETSET,
+              type=types.IntType,
+              format_map=self._heater_ranges)
 
-        self.add_parameter('temperature_control_setpoint',
-            flags=Instrument.FLAG_GETSET,
-            type=types.FloatType)
+          self.add_parameter('heater_power',
+              flags=Instrument.FLAG_GET,
+              type=types.FloatType,
+              units='W or %')
 
-        self.add_parameter('temperature_control_channel',
-            flags=Instrument.FLAG_GET,
-            type=types.IntType,
-            format_map=dict(zip(self._channels,self._channels)))
+          self.add_parameter('heater_status',
+              flags=Instrument.FLAG_GET,
+              type=types.IntType,
+              format_map={
+                  0: 'OK',
+                  1: 'heater open error'
+                  })
 
-        self.add_parameter('temperature_control_use_filtered_reading',
-            flags=Instrument.FLAG_GET,
-            type=types.BooleanType)
+          self.add_parameter('mode',
+              flags=Instrument.FLAG_GETSET,
+              type=types.IntType,
+              format_map={0: 'Local', 1: 'Remote', 2: 'Remote, local lock'})
 
-        self.add_parameter('temperature_control_setpoint_units',
-            flags=Instrument.FLAG_GET,
-            type=types.IntType,
-            format_map={1: 'K', 2: 'Ohm'})
+          self.add_parameter('temperature_control_mode',
+              flags=Instrument.FLAG_GETSET,
+              type=types.IntType,
+              format_map={
+                  1: 'closed loop PID',
+                  2: 'Zone tuning',
+                  3: 'open loop',
+                  4: 'off'
+                  })
 
-        self.add_parameter('temperature_control_heater_max_range',
-            flags=Instrument.FLAG_GET,
-            type=types.IntType,
-            format_map=self._heater_ranges)
+          self.add_parameter('temperature_control_pid',
+              flags=Instrument.FLAG_GETSET,
+              type=types.TupleType)
 
-        self.add_parameter('temperature_control_heater_load_resistance',
-            flags=Instrument.FLAG_GET,
-            type=types.FloatType,
-            units='Ohm')
+          self.add_parameter('temperature_control_setpoint',
+              flags=Instrument.FLAG_GETSET,
+              type=types.FloatType)
 
-        self.add_parameter('autoupdate_interval',
-            flags=Instrument.FLAG_GETSET,
-            type=types.IntType,
-            units='s')
+          self.add_parameter('temperature_control_channel',
+              flags=Instrument.FLAG_GET,
+              type=types.IntType,
+              format_map=dict(zip(self._channels,self._channels)))
 
-        self.add_parameter('still_heater',
-            flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
-            type=types.FloatType,
-            minval=0, maxval=100,
-            units='%')
+          self.add_parameter('temperature_control_use_filtered_reading',
+              flags=Instrument.FLAG_GET,
+              type=types.BooleanType)
 
-        self.add_parameter('autoupdate_while_measuring',
-            flags=Instrument.FLAG_GETSET|Instrument.FLAG_PERSIST,
-            type=types.BooleanType)
-        if self.get_autoupdate_while_measuring() == None: self.update_value('autoupdate_while_measuring', False)
+          self.add_parameter('temperature_control_setpoint_units',
+              flags=Instrument.FLAG_GET,
+              type=types.IntType,
+              format_map={1: 'K', 2: 'Ohm'})
 
-        self.add_function('local')
-        self.add_function('remote')
+          self.add_parameter('temperature_control_heater_max_range',
+              flags=Instrument.FLAG_GET,
+              type=types.IntType,
+              format_map=self._heater_ranges)
+
+          self.add_parameter('temperature_control_heater_load_resistance',
+              flags=Instrument.FLAG_GET,
+              type=types.FloatType,
+              units='Ohm')
+
+          self.add_parameter('autoupdate_interval',
+              flags=Instrument.FLAG_GETSET,
+              type=types.IntType,
+              units='s')
+
+          self.add_parameter('still_heater',
+              flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET,
+              type=types.FloatType,
+              minval=0, maxval=100,
+              units='%')
+
+          self.add_parameter('autoupdate_while_measuring',
+              flags=Instrument.FLAG_GETSET|Instrument.FLAG_PERSIST,
+              type=types.BooleanType)
+          if self.get_autoupdate_while_measuring() == None: self.update_value('autoupdate_while_measuring', False)
+
+          self.add_function('local')
+          self.add_function('remote')
 
 
-        ### Auto-updating (useful mostly if you are also logging temperatures) ####
-        self._autoupdater_handle = "lakeshore_autoupdater_%s" % (hashlib.md5(address).hexdigest()[:8])
-        self.set_autoupdate_interval(kwargs.get('autoupdate_interval', 60. if self._logger != None else -1)) # seconds
-        
-        if reset:
-            self.reset()
-        else:
-            self.get_all()
+          ### Auto-updating (useful mostly if you are also logging temperatures) ####
+          self._autoupdater_handle = "lakeshore_autoupdater_%s" % (hashlib.md5(address).hexdigest()[:8])
+          self.set_autoupdate_interval(kwargs.get('autoupdate_interval', 60. if self._logger != None else -1)) # seconds
+
+          if reset:
+              self.reset()
+          else:
+              self.get_all()
+
+        except:
+          self._visainstrument.close()
+          raise
 
     def reset(self):
         self.__write('*RST')
@@ -337,28 +344,30 @@ class Lakeshore_370(Instrument):
           
 
     def __ask(self, msg):
-        for attempt in range(5):
+        max_attempts = 5
+        for attempt in range(max_attempts):
           try:
-            m = self._visa.ask("%s" % msg).replace('\r','')
+            m = self._visainstrument.ask("%s" % msg).replace('\r','')
             qt.msleep(.01)
             break
           except:
-            if attempt >= 0: logging.warn('Attempt #%d to communicate with LakeShore failed.', 1+attempt)
-            if attempt < 4:
+            if attempt >= 0: logging.exception('Attempt #%d to communicate with LakeShore failed.', 1+attempt)
+            if attempt < max_attempts-1:
               qt.msleep((1+attempt)**2 * (0.1 + random.random()))
             else:
               raise
         return m
 
     def __write(self, msg):
-        for attempt in range(5):
+        max_attempts = 5
+        for attempt in range(max_attempts):
           try:
-            self._visa.write("%s" % msg)
+            self._visainstrument.write("%s" % msg)
             qt.msleep(.5)
             break
           except:
-            if attempt > 0: logging.warn('Attempt #%d to communicate with LakeShore failed.', 1+attempt)
-            if attempt < 4:
+            if attempt > 0: logging.exception('Attempt #%d to communicate with LakeShore failed.', 1+attempt)
+            if attempt < max_attempts-1:
               qt.msleep((1+attempt)**2 * (0.1 + random.random()))
             else:
               raise
