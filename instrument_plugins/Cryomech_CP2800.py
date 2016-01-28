@@ -17,7 +17,7 @@
 
 from instrument import Instrument
 #import visa
-import serial
+import serial # Requires pyserial >= 3.0.
 import types
 import logging
 import re
@@ -44,7 +44,7 @@ class Cryomech_CP2800(Instrument):
   
   import serial
   import struct
-  ser = serial.Serial(0, timeout=2.)  # replace zero by n-1 for port COMn
+  ser = serial.Serial('COM5', timeout=2.) # with your COM<n> instead of COM5
   print ser.getSettingsDict()
   # You should get:
   #  {'baudrate': 9600,
@@ -71,7 +71,7 @@ class Cryomech_CP2800(Instrument):
     Instrument.__init__(self, name)
 
     self._address = address
-    self._serial_min_time_between_commands = 0.020 # s
+    self._serial_min_time_between_commands = 0.100 # s
     self._serial_last_access_time = 0
     self._serial_reservation_counter = 0
 
@@ -82,17 +82,6 @@ class Cryomech_CP2800(Instrument):
     except:
       logging.warn('Only local serial ports supported. Address must be of the form COM1 or /dev/ttyS0, not %s' % address)
       raise
-  
-    #visaargs = {}
-    #if address.lower().startswith('asrl'):
-    #  # These are for an RS-232 connection (must set address to 16 in the compressor for RS-232)
-    #  visaargs['parity'] = visa.no_parity
-    #  visaargs['data_bits'] = 8
-    #  visaargs['stop_bits'] = 1
-    #self._visa = visa.instrument(self._address,
-    #               term_chars='',
-    #               timeout=1., # seconds
-    #               **visaargs)
 
     self._lastpacketserialno = max(0x10,
                                    ( 0x10 + int(random.random() * (0xff-0x10)) )%0x100
@@ -226,8 +215,8 @@ class Cryomech_CP2800(Instrument):
     qt.msleep(.5)
 
   def get_all(self):
-    self._reserve_serial()
     try:
+      self._reserve_serial()
       self.get_on()
       self.get_hours_of_operation()
       self.get_clock_battery_ok()
@@ -257,16 +246,17 @@ class Cryomech_CP2800(Instrument):
                       - (time.time() - self._serial_last_access_time) )
     if time_to_sleep > 0: qt.msleep(time_to_sleep)
     if self._serial_reservation_counter == 1:
-      self._serial_connection = serial.Serial(self._serialportno,
+      logging.info('cryo: opening connection. counter = %s', self._serial_reservation_counter)
+      self._serial_connection = serial.Serial(self._address,
             baudrate=9600,
-            bytesize=8,
-            dsrdtr=False,
-            interCharTimeout=None,
-            parity='N',
-            rtscts=False,
-            stopbits=1,
-            timeout=1.,
-            writeTimeout=None)
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            #dsrdtr=False,
+            #interCharTimeout=None,
+            #rtscts=False,
+            #writeTimeout=None,
+            timeout=1.)
 
   def _release_serial(self):
     ''' Counter based opening/closing of the serial connection. '''
@@ -274,29 +264,32 @@ class Cryomech_CP2800(Instrument):
     self._serial_reservation_counter -= 1
     self._serial_last_access_time = time.time()
     if self._serial_reservation_counter == 0:
+      logging.info('cryo: closing connection. counter = %s', self._serial_reservation_counter)
       self._serial_connection.close()
 
   def _ask(self, msg):
     logging.debug('Sending %s', ["0x%02x" % ord(c) for c in msg])
 
-    for attempt in range(3):
-      try:
-        self._reserve_serial()
-        self._serial_connection.write(msg)
-        m = ''
-        while len(m) < 1 or m[-1] != '\r':
-          lastlen = len(m)
-          m += self._serial_connection.read()
-          if lastlen == len(m): assert False, 'Timeout on serial port read.'
-        logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
-        return m
-        
-      except:
-        logging.exception('Attempt %d to communicate with compressor failed', attempt)
-        qt.msleep(1. + attempt**2)
+    #for attempt in range(3):
+    try:
+      self._reserve_serial()
+      self._serial_connection.write(msg)
+      m = ''
+      while len(m) < 1 or m[-1] != '\r':
+        lastlen = len(m)
+        m += self._serial_connection.read()
+        if lastlen == len(m): assert False, 'Timeout on serial port read.'
+      logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
+      return m
 
-      finally:
-        self._release_serial()
+    except:
+      #logging.exception('Attempt %d to communicate with compressor failed', attempt)
+      #qt.msleep(1. + attempt**2)
+      qt.msleep(1.)
+      raise
+
+    finally:
+      self._release_serial()
 
     assert False, 'All attempts to communicate with the compressor failed.'
 

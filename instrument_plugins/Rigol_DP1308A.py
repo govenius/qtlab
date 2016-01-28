@@ -131,8 +131,8 @@ class Rigol_DP1308A(Instrument):
     '''
     logging.info(__name__ + ' : reading all settings from instrument')
 
-    self._reserve_visa()
     try:
+      self._reserve_visa()
       self.get_idn()
       self.get_voltage_ramp_step_size()
       self.get_current_ramp_step_size()
@@ -179,8 +179,8 @@ class Rigol_DP1308A(Instrument):
     max_attempts = 3
     for attempt in range(max_attempts):
 
-      self._reserve_visa()
       try:
+        self._reserve_visa()
 
         try:
           if ask_instead:
@@ -213,8 +213,8 @@ class Rigol_DP1308A(Instrument):
                           e.g. {'P6V': 0.5, 'N25V': -15.}
     '''
 
-    self._reserve_visa()
     try:
+      self._reserve_visa()
 
       if currents_instead:
         for port in port_to_voltage.keys():

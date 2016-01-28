@@ -17,7 +17,7 @@
 
 from instrument import Instrument
 #import visa
-import serial
+import serial # Requires pyserial >= 3.0
 import types
 import logging
 import re
@@ -36,8 +36,6 @@ class Agilent_V750(Instrument):
   logger can be any function that accepts a triple (quantity, 'turbo', value) as an input.
   
   Assumes an RS-232 connection and a baudrate of 9600.
-  
-  Requires pyserial (otherwise you will get an error on "import serial").
   '''
 
   def __init__(self, name, address, reset=False, **kwargs):
@@ -253,8 +251,8 @@ class Agilent_V750(Instrument):
     pass
 
   def get_all(self):
-    self._reserve_serial()
     try:
+      self._reserve_serial()
       self.get_on()
       self.get_remote_configuration()
       self.get_active_stop()
@@ -293,50 +291,56 @@ class Agilent_V750(Instrument):
     Used, e.g., in get_all().
     '''
     self._serial_reservation_counter += 1
+    logging.debug('connection reserved. counter = %s', self._serial_reservation_counter)
     time_to_sleep = ( self._serial_min_time_between_commands
                       - (time.time() - self._serial_last_access_time) )
     if time_to_sleep > 0: qt.msleep(time_to_sleep)
     if self._serial_reservation_counter == 1:
-      self._serial_connection = serial.Serial(self._serialportno,
+      #logging.info('turbo: opening connection. counter = %s', self._serial_reservation_counter)
+      self._serial_connection = serial.Serial(self._address,
           baudrate=9600,
-          bytesize=8,
-          dsrdtr=False,
-          interCharTimeout=None,
-          parity='N',
-          rtscts=False,
-          stopbits=1,
-          timeout=1.,
-          writeTimeout=None)
+          bytesize=serial.EIGHTBITS,
+          parity=serial.PARITY_NONE,
+          stopbits=serial.STOPBITS_ONE,
+          #dsrdtr=False,
+          #interCharTimeout=None,
+          #rtscts=False,
+          #writeTimeout=None,
+          timeout=1.)
 
   def _release_serial(self):
     ''' Counter based opening/closing of the serial connection. '''
     assert self._serial_reservation_counter > 0, 'Trying to release a serial session that has not been reserved! (counter = %s)' % (self._serial_reservation_counter)
     self._serial_reservation_counter -= 1
+    logging.debug('connection released. counter = %s', self._serial_reservation_counter)
     self._serial_last_access_time = time.time()
     if self._serial_reservation_counter == 0:
+      #logging.info('turbo: closing connection. counter = %s', self._serial_reservation_counter)
       self._serial_connection.close()
 
   def _ask(self, msg):
     logging.debug('Sending %s', ["0x%02x" % ord(c) for c in msg])
     
-    for attempt in range(3):
-      try:
-        self._reserve_serial()
-        self._serial_connection.write(msg)
-        m = ''
-        while len(m) < 3 or (ord(m[-3]) != self._etx):
-          lastlen = len(m)
-          m += self._serial_connection.read()
-          if lastlen == len(m): assert False, 'Timeout on serial port read.'
-        logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
-        return m
+    #for attempt in range(2):
+    try:
+      self._reserve_serial()
+      self._serial_connection.write(msg)
+      m = ''
+      while len(m) < 3 or (ord(m[-3]) != self._etx):
+        lastlen = len(m)
+        m += self._serial_connection.read()
+        if lastlen == len(m): assert False, 'Timeout on serial port read.'
+      logging.debug('Got %s', ["0x%02x" % ord(c) for c in m])
+      return m
 
-      except:
-        logging.exception('Attempt %d to communicate with turbo failed', attempt)
-        qt.msleep(1. + attempt**2)
+    except:
+      #logging.exception('Attempt %d to communicate with turbo failed', attempt)
+      #qt.msleep(1. + attempt**2)
+      qt.msleep(1.)
+      raise
 
-      finally:
-        self._release_serial()
+    finally:
+      self._release_serial()
 
     assert False, 'All attempts to communicate with the turbo failed.'
 
