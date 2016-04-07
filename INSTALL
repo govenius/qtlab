@@ -22,7 +22,7 @@ DEPENDENCIES
 The dependencies are split into two groups:
 
 A) python and python libraries.
-    These always need to be installed separately by the user on the computer where QTlab will be running. Note that Python, NumPy, SciPy, ipython and pyreadline are included by default in most Python packages aimed at scientific computing (e.g. Python(x,y) ).
+    These always need to be installed separately by the user on the computer where QTlab will be running. Note that Python, NumPy, SciPy, ipython, pyreadline, and jinja2 are included by default in many Python packages aimed at scientific computing (e.g. Python(x,y) ).
 
 B) other programs.
     These programs generally do not need to be installed, but just have to 'be there'. Adding their locations to the PATH will make sure that QTLab can find the necessary files. This you can do any way you like, below we will describe one way as an example.
