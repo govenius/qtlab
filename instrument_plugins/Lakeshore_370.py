@@ -350,9 +350,9 @@ class Lakeshore_370(Instrument):
             m = self._visainstrument.ask("%s" % msg).replace('\r','')
             qt.msleep(.01)
             break
-          except:
+          except Exception as e:
             if attempt >= 0: logging.exception('Attempt #%d to communicate with LakeShore failed.', 1+attempt)
-            if attempt < max_attempts-1:
+            if attempt < max_attempts-1 and not e.message.strip().lower().startswith('human abort'):
               qt.msleep((1+attempt)**2 * (0.1 + random.random()))
             else:
               raise
@@ -367,7 +367,7 @@ class Lakeshore_370(Instrument):
             break
           except:
             if attempt > 0: logging.exception('Attempt #%d to communicate with LakeShore failed.', 1+attempt)
-            if attempt < max_attempts-1:
+            if attempt < max_attempts-1 and not e.message.strip().lower().startswith('human abort'):
               qt.msleep((1+attempt)**2 * (0.1 + random.random()))
             else:
               raise
