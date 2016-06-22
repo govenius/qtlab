@@ -26,6 +26,7 @@ import logging
 import copy
 import shutil
 import itertools
+from collections import OrderedDict
 
 from gettext import gettext as _L
 
@@ -342,6 +343,18 @@ class DataView():
         # finally remove the obsolete mask
         self._mask = np.zeros(len(self._data), dtype=np.bool)
 
+    def get_single_valued_parameter(self, param):
+        ''' If all values in the (virtual) dimension "param" are the same, return that value. '''
+        assert len(np.unique(self[param])) == 1 or all(np.isnan(self[param])), \
+            '%s is not single valued for the current unmasked rows: %s' % (param, np.unique(self[param]))
+        return self[param][0]
+
+    def get_all_single_valued_parameters(self):
+        params = OrderedDict()
+        for p in self.get_dimensions():
+          try: params[p] = self.get_single_valued_parameter(p)
+          except: pass
+        return params
 
     def divide_into_sweeps(self, sweep_dimension, use_sweep_direction = None):
         '''
