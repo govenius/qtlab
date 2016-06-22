@@ -745,8 +745,8 @@ class Plot():
 
     # convert python lists to numpy arrays
     if not isinstance(x, np.ndarray): x = np.array(x)
-    if y != None and not isinstance(y, np.ndarray): y = np.array(y)
-    if yerr != None and not isinstance(yerr, np.ndarray): yerr = np.array(yerr)
+    if (not isinstance(y, np.ndarray)) and y != None: y = np.array(y)
+    if (not isinstance(yerr, np.ndarray)) and yerr != None: yerr = np.array(yerr)
 
     if len(x.shape) == 1:
 
@@ -754,7 +754,7 @@ class Plot():
         assert y == None, 'x is complex so y must be None. Points described by a single complex vector will be plotted in the complex plane.'
         dd = np.array(( x.real / (1. if x_plot_units==None else x_plot_units), x.imag / (1. if y_plot_units==None else y_plot_units) )).T
       else:
-        assert y != None, 'y must be given if x is a real vector.'
+        assert isinstance(y, np.ndarray), 'y must be given if x is a real vector.'
         assert y.dtype not in complex_dtypes, 'y must be real if x is a real vector.'
         assert x.shape == y.shape, "x and y vector lengths don't match [%s vs %s]." % (x.shape, y.shape)
         dd = np.array(( x / (1. if x_plot_units==None else x_plot_units), y / (1. if y_plot_units==None else y_plot_units) )).T

@@ -246,7 +246,7 @@ class Cryomech_CP2800(Instrument):
                       - (time.time() - self._serial_last_access_time) )
     if time_to_sleep > 0: qt.msleep(time_to_sleep)
     if self._serial_reservation_counter == 1:
-      logging.info('cryo: opening connection. counter = %s', self._serial_reservation_counter)
+      #logging.info('cryo: opening connection. counter = %s', self._serial_reservation_counter)
       self._serial_connection = serial.Serial(self._address,
             baudrate=9600,
             bytesize=serial.EIGHTBITS,
@@ -264,7 +264,7 @@ class Cryomech_CP2800(Instrument):
     self._serial_reservation_counter -= 1
     self._serial_last_access_time = time.time()
     if self._serial_reservation_counter == 0:
-      logging.info('cryo: closing connection. counter = %s', self._serial_reservation_counter)
+      #logging.info('cryo: closing connection. counter = %s', self._serial_reservation_counter)
       self._serial_connection.close()
 
   def _ask(self, msg):

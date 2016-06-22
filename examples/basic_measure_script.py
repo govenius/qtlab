@@ -1,6 +1,9 @@
 # File name: basic_measure_script.py
 #
-# This example should be run with "execfile('basic_measure_script.py')"
+# This example should be run from the main iPython shell with
+# "execfile('basic_measure_script.py')"
+# after changing to the examples directory with something like
+# os.chdir('../qtlab/examples').
 
 from numpy import pi, random, arange, size
 from time import time,sleep
@@ -70,11 +73,23 @@ data.add_coordinate('Bfield, ivvi dac 3 [mV]')
 data.add_value('Psw SQUID')
 
 # The next command will actually create the dirs and files, based
-# on the information provided above. Additionally a settingsfile
-# is created containing the current settings of all the instruments.
+# on the information provided above.
+#
+# A settings file is created containing the current settings of all
+# the instruments.
+#
+# A copy of this measurement script is also saved (the version on
+# disk at the time of calling the create_file() method).
+#
+# A copy of logging.warn / logging.info messages generated after
+# this line is also stored
 data.create_file()
 
-print 'Data stored in %s.' % os.path.abspath(data.get_dir())
+# By default, this message goes to the log file only.
+logging.info('Starting measurement.')
+
+# By default, this message goes to both the log file and the iPython shell.
+logging.warn('Data stored in %s.', os.path.abspath(data.get_dir()))
 
 # preparation is done, now start the measurement.
 # It is actually a simple loop.

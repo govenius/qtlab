@@ -47,22 +47,20 @@ class Agilent_MSO9404A(Instrument):
     scope.set_ch1_vertical_offset(.5)
     scope.set_ch2_vertical_range(8.)
     scope.set_ch2_vertical_offset(0.)
-    scope.set_acquire_mode('HRES')
+    scope.set_acquire_mode('RTIM')
     scope.set_acquire_average_mode('ON')
     scope.set_acquire_average_count(4)
     scope.stop()
 
-    scope.set_timebase_range(.5) # Total duration to capture
+    # Connect probe comp. to channel 1 for this test.
+    scope.set_timebase_range(5e-3) # Total duration to capture
     scope.set_timebase_reference('LEFT')
     scope.set_timebase_position(0.)
 
-    scope.set_acquire_points(acquire_pts)
-    qt.msleep(1.) # should not be necessary
+    scope.set_acquire_points(4096)
 
-    # Assuming you wish to trigger from channel 2:
-    scope.setup_edge_trigger(trigger_source_channel=2, trigger_level=.6)
-    qt.msleep(5.) # probably not necessary
-
+    # Assuming you wish to trigger from channel 1:
+    scope.setup_edge_trigger(trigger_source_channel=1, trigger_level=.5)
 
     ## Acquire the data
     scope_data = scope.acquire_and_return_data(channels=[1,2], resample=True)
@@ -70,7 +68,26 @@ class Agilent_MSO9404A(Instrument):
     ch1 = scope_data[0]['wav']
     ch2 = scope_data[1]['wav']
 
+
     # Now you can e.g. plot ch1 vs time_axis.
+    p = plot.get_plot('scope channels')
+    p = p.get_plot()
+    p.clear()
+
+    p.add_trace(time_axis, ch1,
+                lines=True,
+                points=True,
+                title='ch1')
+    p.add_trace(time_axis, ch2,
+                lines=True,
+                points=True,
+                title='ch2')
+
+    p.set_xlabel('time (s)')
+    p.set_ylabel('voltage (V)')
+
+    p.update()
+    #p.run() # This reopens the plot, if you closed it
     '''
 
     def __init__(self, name, address, reset=False):
@@ -87,14 +104,19 @@ class Agilent_MSO9404A(Instrument):
 
         # Add some global constants
         self._address = address
-        self._visainstrument = visa.instrument(self._address, timeout=30) # timeout is in seconds
+        self._visainstrument = visa.ResourceManager().open_resource(self._address, timeout=30000) # timeout is in milliseconds
+        self._visainstrument.read_termination = '\n'
+        self._visainstrument.write_termination = '\n'
 
         # Tell the instrument not to repeat the command in the responses. We assume this everywhere.
         self._visainstrument.write(':SYST:HEAD 0')
         
-        # we assume most-significant-byte-first WORDs in __words_to_waveform()
-        self._visainstrument.write(':WAVEFORM:FORMAT WORD')
-        self._visainstrument.write(':WAV:BYT MSBF')
+        # # we assume most-significant-byte-first WORDs in __words_to_waveform()
+        # self._visainstrument.write(':WAVEFORM:FORMAT WORD')
+        # self._visainstrument.write(':WAV:BYT MSBF')
+
+        # we assume ASCii in __ascii_to_waveform()
+        self._visainstrument.write(':WAVEFORM:FORMAT ASC')
 
         # This is important for get_waveform() to actually return what we see on the screen
         self._visainstrument.write(':WAVEFORM:VIEW WIND')
@@ -257,7 +279,6 @@ class Agilent_MSO9404A(Instrument):
         self.add_function('autoscale')
         self.add_function('autoscale_vertical')
         self.add_function('digitize')
-        self.add_function('get_waveform_as_words')
         self.add_function('beep')
         
         
@@ -334,13 +355,13 @@ class Agilent_MSO9404A(Instrument):
             channels (sequence): channels for which data is returned
             resample:
                 resample the data to the desired time interval/number of points
-                (scope often returns more points than you request)
+                (the scope often returns more points than you request)
 
         Output:
             None
         '''
         for attempt in range(3):
-        
+
           if self.get_acquire_average_mode() == 'ON':
             self.reset_averaging()
             target_avg_count = self.get_acquire_average_count()
@@ -379,7 +400,7 @@ class Agilent_MSO9404A(Instrument):
               break
 
             except Exception as e:
-              if str(e) == 'Human abort': raise
+              if str(e).lower().strip() == 'human abort': raise
               if wait_attempt > 0:
                 logging.warn('Sleeping more... Exception was: %s' % str(e)) 
               else:
@@ -403,7 +424,8 @@ class Agilent_MSO9404A(Instrument):
             raise Exception('Failed to reach %d averages as requested. (Got up to %d.)' % (target_avg_count, avg_count))
 
           if not resample:
-            return [ {'pre': p, "wav": w } for p,w in zip(pres, wavs) ]
+            return [ {'pre': p, "wav": w, 'time_axis': self.get_time_axis(p) }
+                     for p,w in zip(pres, wavs) ]
 
           # often the scope returns a longer time segment than you ask for...
           # resample the returned data to match the specified timebase and number of points
@@ -556,18 +578,23 @@ class Agilent_MSO9404A(Instrument):
 
     def get_waveform_as_words(self):
         '''
-        Return the waveform data in the current format.
-
-        Input:
-             None
-            
-        Output:
-            output format(string): current output format which can be ASCii, BINary, BYTE or WORD.  See p. 1017.
+        Return the waveform data in binary.
         '''
+        #self._visainstrument.write(':WAVEFORM:FORMAT WORD')
+        assert self._visainstrument.ask(':WAVEFORM:FORMAT?').upper().strip() == 'WORD', 'Wrong data format'
+        return self._visainstrument.ask(':WAVEFORM:DATA?')
 
-        return(self._visainstrument.ask(':WAVEFORM:DATA?'))
-        #return(self._visainstrument.ask(':WAVEFORM:DATA? 1,%u' % self.get_acquire_points()))
+    def get_waveform_as_ascii(self):
+        '''
+        Return the waveform data, assuming that the .
+        '''
+        #print 'get waveform as ascii...'
+        #self._visainstrument.write(':WAVEFORM:FORMAT ASC')
+        assert self._visainstrument.ask(':WAVEFORM:FORMAT?').upper().strip().startswith('ASC'), 'Wrong data format'
 
+        values = self._visainstrument.ask(':WAVEFORM:DATA?').split(',')
+        assert values[-1] == '', 'The last element should be empty.'
+        return np.array(map(float, values[:-1]))
 
     def digitize(self, channel=None):
         '''
@@ -728,11 +755,9 @@ class Agilent_MSO9404A(Instrument):
         Output:
             preamble, waveform (1D vector)
         '''
-        dat = self.get_waveform_as_words()
         pre = self.get_waveform_preamble()
-
-        dat = self.__words_to_waveform(dat, pre)
-
+        dat = self.get_waveform_as_ascii()
+        
         return pre, dat
         
 
@@ -793,9 +818,6 @@ class Agilent_MSO9404A(Instrument):
         
         # Convert into physical units (scale, offset) if preamble was provided
         return voltages
-#       pass
-        
-#       return float_data
 
     def restart_averaging(self):
       # reset the number of averages
