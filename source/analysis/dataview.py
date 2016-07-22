@@ -187,6 +187,7 @@ class DataView():
 
         self._data = unmasked
         self._mask = np.zeros(len(unmasked), dtype=np.bool)
+        self._mask_stack = np.empty((0, len(unmasked)), dtype = np.bool) #TODO: this -> normal python list. utilize pop() and append().
 
         self._dimension_indices = dict([(n,i) for i,n in enumerate(self._dimensions)])
         self.set_mask(False)
@@ -226,6 +227,7 @@ class DataView():
         provided Data object visible again).
         '''
         self._mask[:] = False
+        self._mask_stack = np.empty((0, len(self._mask)), dtype = np.bool)
 
     def get_mask(self):
         '''
@@ -280,7 +282,7 @@ class DataView():
           m[mask] = True
           self._mask = m
 
-    def mask_rows(self, row_mask, unmask_instead=False):
+    def mask_rows(self, row_mask, invert = False):
         '''
         Mask rows in the data. row_mask can be a slice or a boolean vector with
         length equal to the number of previously unmasked rows.
@@ -297,8 +299,8 @@ class DataView():
         #logging.debug("previously unmasked rows = %d" % n)
 
         # new mask for the previously unmasked rows
-        new_mask = np.empty(n, dtype=np.bool); new_mask[:] = unmask_instead
-        new_mask[row_mask] = (not unmask_instead)
+        new_mask = np.empty(n, dtype=np.bool); new_mask[:] = invert
+        new_mask[row_mask] = (not invert)
         #logging.debug("new_mask.sum() = %d" % new_mask.sum())
 
         # combine the old and new masks
@@ -307,6 +309,38 @@ class DataView():
 
         logging.debug("# of masked/unmasked rows = %d/%d" % (full_mask.astype(np.int).sum(), (~full_mask).astype(np.int).sum()))
         self.set_mask(full_mask)
+
+    def push_mask(self, mask, invert = False):
+        '''
+        Push a mask to the 'mask stack'. 
+        Handy for temporary masks e.g. inside loops. mask must be 
+        an array of booleans with length equal to the length of 
+        self._mask or a slice.
+        '''
+        #assert len(mask) == len(self._mask), "Attempting to push mask with incorrect length %s" % len(mask)
+        self._mask_stack = np.append(self._mask_stack, [self.get_mask()], axis = 0)
+        #TODO: make the mask stack cumulative instead of using mask_rows.
+        #new_mask = np.logical_and.reduce(self._mask_stack, axis = 1)
+        #self.set_mask(new_mask)
+        self.mask_rows(mask, invert = invert)
+
+    def pop_mask(self):
+        '''
+        Pop the topmost mask from the mask stack,
+        set previous mask in the stack as current one
+        and return the popped mask.
+        Raises an exception if trying to pop an empty stack.
+        '''
+        try:
+          previous_mask = self._mask_stack[-1]
+        except IndexError as e:
+          raise Exception("Trying to pop empty mask stack: %s" % e)
+
+        self._mask_stack = np.delete(self._mask_stack, -1, axis = 0)
+        #see todo above.
+        #new_mask = np.logical_and.reduce(self._mask_stack, axis = 1)
+        self.set_mask(previous_mask)
+        return previous_mask
 
     def remove_masked_rows_permanently(self):
         '''
@@ -345,7 +379,7 @@ class DataView():
 
     def get_single_valued_parameter(self, param):
         ''' If all values in the (virtual) dimension "param" are the same, return that value. '''
-        assert len(np.unique(self[param])) == 1 or all(np.isnan(self[param])), \
+        assert len(np.unique(self[param])) == 1 or (all(np.isnan(self[param]) and len(self[param]) > 0)), \
             '%s is not single valued for the current unmasked rows: %s' % (param, np.unique(self[param]))
         return self[param][0]
 
@@ -407,20 +441,20 @@ class DataView():
 
         return sweeps
 
-    def mask_sweeps(self, sweep_dimension, sl, unmask_instead=False):
+    def mask_sweeps(self, sweep_dimension, sl, invert=False):
         '''
         Mask entire sweeps (see divide_into_sweeps()).
 
         sl can be a single integer or any slice object compatible with a 1D numpy.ndarray (list of sweeps).
 
-        unmask_instead -- unmask the specified sweeps instead, mask everything else
+        invert -- unmask the specified sweeps instead, mask everything else
         '''
         sweeps = self.divide_into_sweeps(sweep_dimension)
         row_mask = np.zeros(len(self[sweep_dimension]), dtype=np.bool)
         for start,stop in ([sweeps[sl]] if isinstance(sl, int) else sweeps[sl]):
-            logging.debug("%smasking start: %d, stop %d" % ('un' if unmask_instead else '',start, stop))
+            logging.debug("%smasking start: %d, stop %d" % ('un' if invert else '',start, stop))
             row_mask[start:stop] = True
-        self.mask_rows(~row_mask if unmask_instead else row_mask)
+        self.mask_rows(~row_mask if invert else row_mask)
 
 
     def unmask_sweeps(self, sweep_dimension, sl):
@@ -429,7 +463,7 @@ class DataView():
 
         sl can be a single integer or any slice object compatible with a 1D numpy.ndarray (list of sweeps).
         '''
-        self.mask_sweeps(sweep_dimension, sl, unmask_instead=True)
+        self.mask_sweeps(sweep_dimension, sl, invert=True)
 
 
     def get_data(self, deep_copy=False):
