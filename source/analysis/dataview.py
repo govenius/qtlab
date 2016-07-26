@@ -312,12 +312,10 @@ class DataView():
 
     def push_mask(self, mask, unmask_instead = False):
         '''
-        Push a mask to the 'mask stack'. 
-        Handy for temporary masks e.g. inside loops. mask must be 
-        an array of booleans with length equal to the length of 
-        self._mask or a slice.
+        Same as mask_rows(), but also pushes the mask to a 'mask stack'.
+        Handy for temporary masks e.g. inside loops.
+        See also pop_mask().
         '''
-        #assert len(mask) == len(self._mask), "Attempting to push mask with incorrect length %s" % len(mask)
         self._mask_stack.append(self.get_mask())
         self.mask_rows(mask, unmask_instead = unmask_instead)
 
