@@ -366,8 +366,9 @@ class DataView():
             cached_arr = [ val for i,val in enumerate(cached_arr) if not self._mask[i] ]
           self._virtual_dims[name] = { 'fn': dim['fn'], 'cached_array': cached_arr }
 
-        # finally remove the obsolete mask
+        # finally remove the obsolete mask(s)
         self._mask = np.zeros(len(self._data), dtype=np.bool)
+        self._mask_stack = []
 
     def get_single_valued_parameter(self, param):
         ''' If all values in the (virtual) dimension "param" are the same, return that value. '''
