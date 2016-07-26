@@ -187,7 +187,7 @@ class DataView():
 
         self._data = unmasked
         self._mask = np.zeros(len(unmasked), dtype=np.bool)
-        self._mask_stack = np.empty((0, len(unmasked)), dtype = np.bool) #TODO: this -> normal python list. utilize pop() and append().
+        self._mask_stack = []
 
         self._dimension_indices = dict([(n,i) for i,n in enumerate(self._dimensions)])
         self.set_mask(False)
@@ -227,7 +227,7 @@ class DataView():
         provided Data object visible again).
         '''
         self._mask[:] = False
-        self._mask_stack = np.empty((0, len(self._mask)), dtype = np.bool)
+        self._mask_stack = []
 
     def get_mask(self):
         '''
@@ -318,7 +318,7 @@ class DataView():
         self._mask or a slice.
         '''
         #assert len(mask) == len(self._mask), "Attempting to push mask with incorrect length %s" % len(mask)
-        self._mask_stack = np.append(self._mask_stack, [self.get_mask()], axis = 0)
+        self._mask_stack.append(self.get_mask())
         #TODO: make the mask stack cumulative instead of using mask_rows.
         #new_mask = np.logical_and.reduce(self._mask_stack, axis = 1)
         #self.set_mask(new_mask)
@@ -332,11 +332,10 @@ class DataView():
         Raises an exception if trying to pop an empty stack.
         '''
         try:
-          previous_mask = self._mask_stack[-1]
+          previous_mask = self._mask_stack.pop()
         except IndexError as e:
           raise Exception("Trying to pop empty mask stack: %s" % e)
 
-        self._mask_stack = np.delete(self._mask_stack, -1, axis = 0)
         #see todo above.
         #new_mask = np.logical_and.reduce(self._mask_stack, axis = 1)
         self.set_mask(previous_mask)
