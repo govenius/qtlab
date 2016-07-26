@@ -319,9 +319,6 @@ class DataView():
         '''
         #assert len(mask) == len(self._mask), "Attempting to push mask with incorrect length %s" % len(mask)
         self._mask_stack.append(self.get_mask())
-        #TODO: make the mask stack cumulative instead of using mask_rows.
-        #new_mask = np.logical_and.reduce(self._mask_stack, axis = 1)
-        #self.set_mask(new_mask)
         self.mask_rows(mask, unmask_instead = unmask_instead)
 
     def pop_mask(self):
@@ -336,8 +333,6 @@ class DataView():
         except IndexError as e:
           raise Exception("Trying to pop empty mask stack: %s" % e)
 
-        #see todo above.
-        #new_mask = np.logical_and.reduce(self._mask_stack, axis = 1)
         self.set_mask(previous_mask)
         return previous_mask
 
