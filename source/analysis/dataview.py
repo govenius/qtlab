@@ -282,7 +282,7 @@ class DataView():
           m[mask] = True
           self._mask = m
 
-    def mask_rows(self, row_mask, invert = False):
+    def mask_rows(self, row_mask, unmask_instead = False):
         '''
         Mask rows in the data. row_mask can be a slice or a boolean vector with
         length equal to the number of previously unmasked rows.
@@ -299,8 +299,8 @@ class DataView():
         #logging.debug("previously unmasked rows = %d" % n)
 
         # new mask for the previously unmasked rows
-        new_mask = np.empty(n, dtype=np.bool); new_mask[:] = invert
-        new_mask[row_mask] = (not invert)
+        new_mask = np.empty(n, dtype=np.bool); new_mask[:] = unmask_instead
+        new_mask[row_mask] = (not unmask_instead)
         #logging.debug("new_mask.sum() = %d" % new_mask.sum())
 
         # combine the old and new masks
@@ -310,7 +310,7 @@ class DataView():
         logging.debug("# of masked/unmasked rows = %d/%d" % (full_mask.astype(np.int).sum(), (~full_mask).astype(np.int).sum()))
         self.set_mask(full_mask)
 
-    def push_mask(self, mask, invert = False):
+    def push_mask(self, mask, unmask_instead = False):
         '''
         Push a mask to the 'mask stack'. 
         Handy for temporary masks e.g. inside loops. mask must be 
@@ -322,7 +322,7 @@ class DataView():
         #TODO: make the mask stack cumulative instead of using mask_rows.
         #new_mask = np.logical_and.reduce(self._mask_stack, axis = 1)
         #self.set_mask(new_mask)
-        self.mask_rows(mask, invert = invert)
+        self.mask_rows(mask, unmask_instead = unmask_instead)
 
     def pop_mask(self):
         '''
@@ -441,20 +441,20 @@ class DataView():
 
         return sweeps
 
-    def mask_sweeps(self, sweep_dimension, sl, invert=False):
+    def mask_sweeps(self, sweep_dimension, sl, unmask_instead=False):
         '''
         Mask entire sweeps (see divide_into_sweeps()).
 
         sl can be a single integer or any slice object compatible with a 1D numpy.ndarray (list of sweeps).
 
-        invert -- unmask the specified sweeps instead, mask everything else
+        unmask_instead -- unmask the specified sweeps instead, mask everything else
         '''
         sweeps = self.divide_into_sweeps(sweep_dimension)
         row_mask = np.zeros(len(self[sweep_dimension]), dtype=np.bool)
         for start,stop in ([sweeps[sl]] if isinstance(sl, int) else sweeps[sl]):
-            logging.debug("%smasking start: %d, stop %d" % ('un' if invert else '',start, stop))
+            logging.debug("%smasking start: %d, stop %d" % ('un' if unmask_instead else '',start, stop))
             row_mask[start:stop] = True
-        self.mask_rows(~row_mask if invert else row_mask)
+        self.mask_rows(~row_mask if unmask_instead else row_mask)
 
 
     def unmask_sweeps(self, sweep_dimension, sl):
@@ -463,7 +463,7 @@ class DataView():
 
         sl can be a single integer or any slice object compatible with a 1D numpy.ndarray (list of sweeps).
         '''
-        self.mask_sweeps(sweep_dimension, sl, invert=True)
+        self.mask_sweeps(sweep_dimension, sl, unmask_instead=True)
 
 
     def get_data(self, deep_copy=False):
