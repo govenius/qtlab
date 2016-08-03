@@ -372,7 +372,7 @@ class DataView():
 
     def get_single_valued_parameter(self, param):
         ''' If all values in the (virtual) dimension "param" are the same, return that value. '''
-        assert len(np.unique(self[param])) == 1 or (all(np.isnan(self[param]) and len(self[param]) > 0)), \
+        assert len(np.unique(self[param])) == 1 or (all(np.isnan(self[param])) and len(self[param]) > 0), \
             '%s is not single valued for the current unmasked rows: %s' % (param, np.unique(self[param]))
         return self[param][0]
 
