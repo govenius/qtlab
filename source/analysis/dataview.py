@@ -480,7 +480,7 @@ class DataView():
         '''
         if name in self._virtual_dims.keys():
             d = self._virtual_dims[name]['cached_array']
-            if d == None: d = self._virtual_dims[name]['fn'](self)
+            if d is None: d = self._virtual_dims[name]['fn'](self)
             if len(d) == len(self._mask): # The function may return masked or unmasked data...
               # The function returned unmasked data so apply the mask
               try:
@@ -516,9 +516,9 @@ class DataView():
         '''
         logging.debug('adding virtual dimension "%s"' % name)
 
-        assert (fn != None) + (arr != None) + (comment_regex != None) + (from_set != None) == 1, 'You must specify exactly one of "fn", "arr", or "comment_regex".'
+        assert (fn != None) + (arr is not None) + (comment_regex != None) + (from_set != None) == 1, 'You must specify exactly one of "fn", "arr", or "comment_regex".'
 
-        if arr != None:
+        if arr is not None:
           assert len(arr) == len(self._mask), '"arr" must be a vector of the same length as the real data columns. If you want to do something fancier, specify your own fn.'
 
         if from_set != None:
@@ -592,7 +592,7 @@ class DataView():
 
             return self.add_virtual_dimension(name, arr=vals, return_result=return_result)
 
-        if cache_fn_values and arr==None:
+        if cache_fn_values and arr is None:
             old_mask = self.get_mask().copy() # backup the mask
             self.clear_mask()
             vals = fn(self)
