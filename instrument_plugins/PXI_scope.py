@@ -363,7 +363,7 @@ class PXI_scope(Instrument):
     def get_digitized_time(self):
         ''' The total amount of time digitized. '''
         boxcar_filter_length_in_samples = 2**self.get_boxcar_power()
-        return (1 + self.get_points()) * boxcar_filter_length_in_samples/self._ADC_SAMPLE_RATE
+        return self.get_points() * boxcar_filter_length_in_samples/self._ADC_SAMPLE_RATE
       
     def estimate_min_acquisition_time(self):
         ''' Give a lower bound for the acquisition time.
@@ -406,7 +406,7 @@ class PXI_scope(Instrument):
                 self._ftp = None
                 ftp = None
 
-              qt.msleep( estimated_min_time + 0.2 )
+              qt.msleep( estimated_min_time + 0.5 )
           
             ftp_read_attempt = 0
             while time.time() < (time_armed
