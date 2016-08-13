@@ -2,6 +2,7 @@
 # Pieter de Groot <pieterdegroot@gmail.com>, 2008
 # Martijn Schaafsma <qtlab@mcschaafsma.nl>, 2008
 # Joonas Govenius <joonas.govenius@aalto.fi>, 2014
+# Mate Jenei <mate.jenei@aalto.fi>, 2016
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -137,6 +138,10 @@ class Agilent_E8257D(Instrument):
                         'ext1': 'external modulation (EXT1 input)',
                         'ext2': 'external modulation (EXT2 input)'})
         
+        self.add_parameter('fm_dev',
+            flags=Instrument.FLAG_GETSET, units='Hz', minval=1, maxval=32e+6, type=types.FloatType)
+        self.add_parameter('fm_rate',
+            flags=Instrument.FLAG_GETSET, units='Hz', minval=0, maxval=100e+3, type=types.FloatType)
 
         self.add_parameter('frequency_sweep_mode',
             flags=Instrument.FLAG_GETSET, type=types.StringType,
@@ -216,6 +221,9 @@ class Agilent_E8257D(Instrument):
         self.get_am_inverted_polarity()
         self.get_am_exponential_depth()
         self.get_am_linear_depth()
+
+        self.get_fm_dev()
+        self.get_fm_rate()
 
         self.get_ext1_input_impedance()
         self.get_ext2_input_impedance()
@@ -691,6 +699,19 @@ class Agilent_E8257D(Instrument):
     def do_set_am_inverted_polarity(self, val):
         self._visainstrument.write(':AM:POL %s' % ('INV' if val else 'NORM'))
         
+    def do_get_fm_dev(self):
+        stat = self._visainstrument.ask(':FM:DEV?')
+        return stat.lower()
+
+    def do_set_fm_dev(self, val):
+        self._visainstrument.write(':FM:DEV %g' % val)
+
+    def do_get_fm_rate(self):
+        stat = self._visainstrument.ask(':FM:INT:FREQ?')
+        return stat.lower()
+    def do_set_fm_rate(self, val):
+        self._visainstrument.write(':FM:INT:FREQ %g' % val)
+
     def do_get_ext1_input_impedance(self):
         stat = self._visainstrument.ask(':AM:EXT1:IMP?')
         return int(float(stat))
