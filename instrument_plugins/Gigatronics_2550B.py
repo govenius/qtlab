@@ -68,7 +68,7 @@ class Gigatronics_2550B(Instrument):
           self.add_parameter('phase',
               flags=Instrument.FLAG_GETSET, units='rad', minval=-numpy.pi, maxval=numpy.pi, type=types.FloatType)
           self.add_parameter('frequency', format='%.09e',
-              flags=Instrument.FLAG_GETSET, units='Hz', minval=1e5, maxval=50e9, type=types.FloatType, cache_time=1.)
+              flags=Instrument.FLAG_GETSET, units='Hz', minval=1e5, maxval=50e9, type=types.FloatType) #, cache_time=1.)
           self.add_parameter('alc_source',
               flags=Instrument.FLAG_GETSET, type=types.StringType)
           self.add_parameter('trigger_source',
