@@ -50,7 +50,7 @@ class RS_SGS100A(Instrument):
           self._visainstrument.read_termination = '\n'
           self._visainstrument.write_termination = '\n'
 
-          self.add_parameter('idn', flags=Instrument.FLAG_GET, type=types.StringType)
+          self.add_parameter('idn', flags=Instrument.FLAG_GET, type=types.StringType, format='%.10s')
 
           self.add_parameter('power',
               flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, units='dBm', minval=-20, maxval=25, type=types.FloatType)
@@ -70,6 +70,20 @@ class RS_SGS100A(Instrument):
               flags=Instrument.FLAG_GETSET|Instrument.FLAG_GET_AFTER_SET, type=types.StringType,
               format_map={'on': 'output on',
                           'off': 'output off'})
+
+          self.add_parameter('mod_pulse',
+              flags=Instrument.FLAG_GETSET, type=types.StringType,
+              format_map={'on': 'pulsing/gating on',
+                          'off': 'pulsing/gating off'})
+
+          self.add_parameter('pulse_source',
+              flags=Instrument.FLAG_GETSET, type=types.StringType,
+              format_map={'int': 'internal',
+                          'ext': 'external'})
+
+          self.add_parameter('pulse_inverted_polarity',
+            flags=Instrument.FLAG_GETSET, type=types.BooleanType)
+
 
           self.add_function('reset')
           self.add_function ('get_all')
@@ -116,6 +130,10 @@ class RS_SGS100A(Instrument):
         self.get_status()
         self.get_timebase()
         self.get_timebase_external_input_frequency()
+
+        self.get_mod_pulse()
+        self.get_pulse_inverted_polarity()
+        self.get_pulse_source()
 
     def __to_rounded_string(self, x, decimals, significant_figures):
         ''' Round x to the specified number of decimals and significant figures.
@@ -208,3 +226,22 @@ class RS_SGS100A(Instrument):
         '''
         logging.debug(__name__ + ' : set timebase freq')
         self._visainstrument.write('ROSC:EXT:FREQ %sMHZ' % val)
+
+    def do_get_mod_pulse(self):
+        stat = self._visainstrument.query(':PULM:STAT?')
+        return 'on' if (stat.lower().strip() in ['1', 'on']) else 'off'
+    def do_set_mod_pulse(self, status):
+        #self.set_pulse_inverted_polarity(False)
+        self._visainstrument.write(':PULM:STAT %s' % (status.upper()))
+
+    def do_get_pulse_inverted_polarity(self):
+        stat = self._visainstrument.query(':PULM:POL?')
+        return stat.lower().strip().startswith('inv')
+    def do_set_pulse_inverted_polarity(self, val):
+        self._visainstrument.write(':PULM:POL %s' % ('INV' if val else 'NORM'))
+
+    def do_get_pulse_source(self):
+        stat = self._visainstrument.query(':PULM:SOUR?').lower()
+        return stat
+    def do_set_pulse_source(self, state):
+        self._visainstrument.write( ':PULM:SOUR %s' % (state.upper()) )
