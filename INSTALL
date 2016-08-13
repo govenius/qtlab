@@ -58,12 +58,10 @@ B) other programs.
     libraries used for creating graphical interfaces.
     URL: pygtk.org
 
-5) jinja2 (>=2.7.2)
+5) plotbridge (>=1.0.0) + its dependencies (in particular jinja2 (>=2.7.2))
 
-    Templating library used for generating plots.
-    Can be installed by unpacking the latest .tar and linking/copying
-    the "jinja2" subdirectory to anywhere in Python's path (e.g. "3rd_party").
-    URL: jinja.pocoo.org/
+    Template based plot generation.
+    URL: http://plotbridge.readthedocs.io/
 
 6) pyvisa (>=1.8)
    [WARNING: The pyvisa API changed significantly around version 1.5 and 1.6,

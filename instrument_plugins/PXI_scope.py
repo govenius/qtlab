@@ -54,20 +54,18 @@ class PXI_scope(Instrument):
     traces = pxi.get_traces(arm_first=True) # with arm_first, this blocks until data is returned.
     
     # plot the traces...
-    from plot import plotbridge_plot as plt
+    from plotbridge.plot import Plot as plt
     p = plt(name='PXI scope test', overwrite=True)
-    p.set_xlabel('time (us)')
-    p.set_ylabel('V (mV)')
+    p.set_xlabel('time (us)'); p.set_xunits(1e-6)
+    p.set_ylabel('V (mV)'); p.set_yunits(1e-3)
 
     p.clear()
     for i,ch in enumerate([ 'AI0', 'AI1', 'AI0_stddev', 'AI1_stddev' ]):
       # "stddev" is the pointwise standard deviation of the ensemble of averaged traces
       p.add_trace(traces['timeaxis'], traces[ch].real,
-        x_plot_units=1e-6, y_plot_units=1e-3,
         points=True, lines=True,
         color=i, linetype=1, title=('Re[%s]'%ch))
       p.add_trace(traces['timeaxis'], traces[ch].imag,
-        x_plot_units=1e-6, y_plot_units=1e-3,
         points=True, lines=True,
         color=i, linetype=2, title=('Im[%s]'%ch))
 
@@ -232,12 +230,11 @@ class PXI_scope(Instrument):
         import plot
         p = plot.get_plot('PXI outputs').get_plot()
         p.clear()
-        p.set_xlabel('time (%.1e s)' % time_unit)
+        p.set_xlabel('time (%.1e s)' % time_unit); p.set_xunits(time_unit)
         p.set_ylabel('channel')
 
         for i,trig in enumerate(triggers.T):
             p.add_trace(times, trig.astype(np.float),
-                        x_plot_units=time_unit,
                         points=True, lines=True,
                         title=str(i))
 

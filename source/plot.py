@@ -30,7 +30,7 @@ from data import Data
 from lib import namedlist
 from lib.misc import get_dict_keys
 from lib.network.object_sharer import SharedGObject, cache_result
-from plotbridge.plotbridge import Plot as plotbridge_plot
+from plotbridge.plot import Plot as plt
 
 
 def get_plot(name=None,
@@ -151,7 +151,7 @@ class Plot(SharedGObject):
         self._last_update = 0
         self._update_hid = None
 
-        self._pltbr = plotbridge_plot(name=self._name, template=template,
+        self._pltbr = plt(name=self._name, template=template,
                                           output_dir=output_dir, overwrite=True)
 
         Plot._plot_list.add(self._name, self)
@@ -312,12 +312,10 @@ class Plot(SharedGObject):
 
     def save_png(self, *args, **kwargs):
       ''' Deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). '''
-      self._pltbr.set_export_png(True)
       logging.warn('This function is deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). Arguments ignored: %s, %s', args, kwargs)
 
     def save_eps(self, *args, **kwargs):
       ''' Deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). '''
-      self._pltbr.set_export_eps(True)
       logging.warn('This function is deprecated. Use plotbridge.Plot.set_export_png(True) or plotbridge.Plot.set_export_eps(True) followed by run(). Arguments ignored: %s, %s', args, kwargs)
 
     def set_labels(self, x='', y='', z='', update=True):
