@@ -427,7 +427,7 @@ class PXI_scope(Instrument):
                 logging.debug('downloading trace: %s', most_recent_trace)
                 
                 # download the data to a local file
-                most_recent_trace = os.path.split(most_recent_trace)[-1] # strip path, keep filename only
+                most_recent_trace = most_recent_trace.split('\\')[-1] # strip path, keep filename only
                 local_datafilepath = os.path.join(qt.config.get('tempdir'), most_recent_trace)
                 local_datafilepath = os.path.abspath(local_datafilepath)
                 with open(local_datafilepath, 'wb') as fdata:
