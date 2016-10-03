@@ -673,7 +673,7 @@ class bluefors_log_reader(Instrument):
         for ch in self._pchannels:
           q = self.get_pressure(ch, ends)
           if isinstance(q, np.ndarray):
-            quantities_to_plot.append( ('P%s (mBar)' % ch, q, ch, 6 ) )
+            quantities_to_plot.append( ('P%s (mbar)' % ch, q, ch, 6 ) )
 
       prefixes = []
       if turbo: prefixes.append('turbo ')
