@@ -562,7 +562,7 @@ class bluefors_log_reader(Instrument):
           raise Exception('%s is neither None, a datetime object, or a string in the "YY-MM-DD" format.' % str(near))
 
       # find a point within a cooldown
-      for i in range(200):
+      for i in range(400):
         t += dt_rough
         if within_cooldown(t): break
 
