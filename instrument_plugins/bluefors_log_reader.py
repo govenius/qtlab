@@ -372,25 +372,25 @@ class bluefors_log_reader(Instrument):
       if channel.lower() == 'tank pressure':
         # get the tank pressure as measured by P4 during the mixture pump-out phase.
         def get_vals(ends):
-          # find the last subinterval where scroll1 and V13 were both on
+          # find the end of the last subinterval where scroll1 and V13 were both on
           booleans = self.get_boolean_channels(ends)
           times = np.array([ b[0] for b in booleans ])
-          vals = np.array([ b[1]['scroll1'] * b[1]['v13']  for b in booleans ])
+          vals = np.array([ b[1]['scroll1'] & b[1]['v13']  for b in booleans ], dtype=np.bool)
 
-          last_on = None
-          prev_off = None
-          for t, v in reversed(np.array([times, vals]).T):
-            if last_on == None and v: last_on = t
-            if last_on != None:
-              if v: prev_off = t
+          try:
+            last_on_end = times[1:][vals[:-1]][-1]
+            last_on_start = None
+            for t, v in reversed(np.array([times, vals]).T):
+              if t >= last_on_end: continue
+              if v: last_on_start = t
               else: break
 
-          if last_on == None or prev_off == None:
+            subinterval_start = last_on_start + (last_on_end-last_on_start)/2
+            return self.get_pressure(4, (subinterval_start, last_on_end))
+
+          except:
             logging.warn('Could not find a subinterval in %s when both scroll1 and V13 are on. Perhaps the mixture was not pumped out normally?', ends)
             return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
-
-          subinterval_start = prev_off + (last_on-prev_off)/2
-          return self.get_pressure(4, (subinterval_start, last_on))
 
       elif channel.lower() == 'pre-warmup p6':
         # Get P6 just before starting the warmup,
