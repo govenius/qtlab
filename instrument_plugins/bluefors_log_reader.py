@@ -495,7 +495,7 @@ class bluefors_log_reader(Instrument):
                                      0, 0, tzinfo=tz.tzlocal())
         hours_since_beginning = np.array([ (t - ref_time).total_seconds() for t in time_and_peak_pairs[:,0] ])/3600.
         p.add_trace(hours_since_beginning/24., time_and_peak_pairs[:,1].astype(np.float),
-                    points=True, lines=True, title=channel)
+                    points=True, lines=False, title=channel)
         p.update()
         p.run()
 
