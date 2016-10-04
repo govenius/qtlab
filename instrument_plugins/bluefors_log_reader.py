@@ -877,6 +877,11 @@ class bluefors_log_reader(Instrument):
 
       for datestr in dates:
         fname = os.path.join(self._address, datestr, filename % datestr)
+
+        # Some newer versions of the BlueFors software store the pressures in a file called
+        # "maxigauge..." rather than "Maxigauge...", so also try a lower cased version.
+        if not os.path.exists(fname): fname = os.path.join(self._address, datestr, filename.lower() % datestr)
+
         try:
           data = np.loadtxt(fname,
                             dtype={
