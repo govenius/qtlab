@@ -350,6 +350,7 @@ class bluefors_log_reader(Instrument):
         * 'tank pressure'
         * 'static compressor pressure high'
         * 'static compressor pressure low'
+        * 'pre-warmup p6'
 
       In combination with find_cooldown(all_between=...) this is a nice way of following
       changes in tank pressure, compressor oil temperature, or base temperature
@@ -390,6 +391,28 @@ class bluefors_log_reader(Instrument):
 
           subinterval_start = prev_off + (last_on-prev_off)/2
           return self.get_pressure(4, (subinterval_start, last_on))
+
+      elif channel.lower() == 'pre-warmup p6':
+        # Get P6 just before starting the warmup,
+        # i.e., before the turbo is turned off.
+
+        def get_vals(ends):
+          # find the end of the last subinterval where we were circulating normally (with the turbo on).
+          booleans = self.get_boolean_channels(ends)
+          times = np.array([ b_next[0] for b,b_next in zip(booleans[:-1], booleans[1:])
+                             if b[1]['scroll1'] & b[1]['turbo1']
+                                & b[1]['v1'] & b[1]['v10'] & b[1]['v4']
+                                & (b[1]['v8'] | (b[1]['v7'] & b[1]['v9'])) ])
+
+          if len(times) < 1:
+            logging.warn('Could not find a subinterval in %s when the circulation was normal.', ends)
+            return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
+
+          last_on = times.max()
+
+          subinterval_start = last_on - datetime.timedelta(hours=2)
+          subinterval_end = last_on - datetime.timedelta(minutes=10)
+          return self.get_pressure(6, (subinterval_start, subinterval_end))
 
       elif channel.lower() in [ 'static compressor pressure high', 'static compressor pressure low' ]:
         # Get the helium pressure in the interval before the compressor is turned on.
