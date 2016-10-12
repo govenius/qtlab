@@ -350,6 +350,7 @@ class bluefors_log_reader(Instrument):
         * 'tank pressure'
         * 'static compressor pressure high'
         * 'static compressor pressure low'
+        * 'pre-warmup p6'
 
       In combination with find_cooldown(all_between=...) this is a nice way of following
       changes in tank pressure, compressor oil temperature, or base temperature
@@ -371,25 +372,47 @@ class bluefors_log_reader(Instrument):
       if channel.lower() == 'tank pressure':
         # get the tank pressure as measured by P4 during the mixture pump-out phase.
         def get_vals(ends):
-          # find the last subinterval where scroll1 and V13 were both on
+          # find the end of the last subinterval where scroll1 and V13 were both on
           booleans = self.get_boolean_channels(ends)
           times = np.array([ b[0] for b in booleans ])
-          vals = np.array([ b[1]['scroll1'] * b[1]['v13']  for b in booleans ])
+          vals = np.array([ b[1]['scroll1'] & b[1]['v13']  for b in booleans ], dtype=np.bool)
 
-          last_on = None
-          prev_off = None
-          for t, v in reversed(np.array([times, vals]).T):
-            if last_on == None and v: last_on = t
-            if last_on != None:
-              if v: prev_off = t
+          try:
+            last_on_end = times[1:][vals[:-1]][-1]
+            last_on_start = None
+            for t, v in reversed(np.array([times, vals]).T):
+              if t >= last_on_end: continue
+              if v: last_on_start = t
               else: break
 
-          if last_on == None or prev_off == None:
+            subinterval_start = last_on_start + (last_on_end-last_on_start)/2
+            return self.get_pressure(4, (subinterval_start, last_on_end))
+
+          except:
             logging.warn('Could not find a subinterval in %s when both scroll1 and V13 are on. Perhaps the mixture was not pumped out normally?', ends)
             return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
 
-          subinterval_start = prev_off + (last_on-prev_off)/2
-          return self.get_pressure(4, (subinterval_start, last_on))
+      elif channel.lower() == 'pre-warmup p6':
+        # Get P6 just before starting the warmup,
+        # i.e., before the turbo is turned off.
+
+        def get_vals(ends):
+          # find the end of the last subinterval where we were circulating normally (with the turbo on).
+          booleans = self.get_boolean_channels(ends)
+          times = np.array([ b_next[0] for b,b_next in zip(booleans[:-1], booleans[1:])
+                             if b[1]['scroll1'] & b[1]['turbo1']
+                                & b[1]['v1'] & b[1]['v10'] & b[1]['v4']
+                                & (b[1]['v8'] | (b[1]['v7'] & b[1]['v9'])) ])
+
+          if len(times) < 1:
+            logging.warn('Could not find a subinterval in %s when the circulation was normal.', ends)
+            return np.array([ (ends[0], np.nan), (ends[-1], np.nan) ])
+
+          last_on = times.max()
+
+          subinterval_start = last_on - datetime.timedelta(hours=2)
+          subinterval_end = last_on - datetime.timedelta(minutes=10)
+          return self.get_pressure(6, (subinterval_start, subinterval_end))
 
       elif channel.lower() in [ 'static compressor pressure high', 'static compressor pressure low' ]:
         # Get the helium pressure in the interval before the compressor is turned on.
@@ -472,7 +495,7 @@ class bluefors_log_reader(Instrument):
                                      0, 0, tzinfo=tz.tzlocal())
         hours_since_beginning = np.array([ (t - ref_time).total_seconds() for t in time_and_peak_pairs[:,0] ])/3600.
         p.add_trace(hours_since_beginning/24., time_and_peak_pairs[:,1].astype(np.float),
-                    points=True, lines=True, title=channel)
+                    points=True, lines=False, title=channel)
         p.update()
         p.run()
 
@@ -539,7 +562,7 @@ class bluefors_log_reader(Instrument):
           raise Exception('%s is neither None, a datetime object, or a string in the "YY-MM-DD" format.' % str(near))
 
       # find a point within a cooldown
-      for i in range(200):
+      for i in range(400):
         t += dt_rough
         if within_cooldown(t): break
 
@@ -673,7 +696,7 @@ class bluefors_log_reader(Instrument):
         for ch in self._pchannels:
           q = self.get_pressure(ch, ends)
           if isinstance(q, np.ndarray):
-            quantities_to_plot.append( ('P%s (mBar)' % ch, q, ch, 6 ) )
+            quantities_to_plot.append( ('P%s (mbar)' % ch, q, ch, 6 ) )
 
       prefixes = []
       if turbo: prefixes.append('turbo ')
@@ -854,6 +877,11 @@ class bluefors_log_reader(Instrument):
 
       for datestr in dates:
         fname = os.path.join(self._address, datestr, filename % datestr)
+
+        # Some newer versions of the BlueFors software store the pressures in a file called
+        # "maxigauge..." rather than "Maxigauge...", so also try a lower cased version.
+        if not os.path.exists(fname): fname = os.path.join(self._address, datestr, filename.lower() % datestr)
+
         try:
           data = np.loadtxt(fname,
                             dtype={
