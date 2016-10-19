@@ -42,6 +42,11 @@ from lib.network.object_sharer import SharedGObject, cache_result
 if in_qtlab:
     import qt
 
+
+# New .dat files can be transparently compressed with gzip or bzip2.
+data_compression_format = None # Valid options are None, 'gz', 'bz2'
+
+
 # Filename generator classes
 
 class DateTimeGenerator:
@@ -87,6 +92,10 @@ class DateTimeGenerator:
                 ts=data_obj._localtime)
         tstr = time.strftime('%H%M%S', data_obj._localtime)
         filename = '%s_%s.dat' % (tstr, data_obj._name)
+
+        if data_compression_format != None:
+            assert data_compression_format in ['gz', 'bz2'], 'Unknown compression format %s' % data_compression_format
+            filename += '.' + data_compression_format
 
         return os.path.join(dir, filename)
 
@@ -153,6 +162,16 @@ class _DataList(namedlist.NamedList):
             return item.get_time_name()
         else:
             return name
+
+def _open_dat_file(filename, mode):
+    if filename.endswith('.gz'):
+        import gzip
+        return gzip.GzipFile(filename, mode)
+    elif filename.endswith('.bz2'):
+        import bz2
+        return bz2.BZ2File(filename, mode)
+    else:
+        return open(filename, mode)
 
 class Data(SharedGObject):
     '''
@@ -630,7 +649,7 @@ class Data(SharedGObject):
             os.makedirs(self._dir)
 
         try:
-            self._file = open(self.get_filepath(), 'w+')
+            self._file = _open_dat_file(self.get_filepath(), 'w+')
         except:
             logging.error('Unable to open file')
             return False
@@ -1130,90 +1149,91 @@ class Data(SharedGObject):
                     logging.info('Loaded data from cache file %s.' % cache_fname)
                     if self._load_row_mask != None:
                       logging.warn('The row_mask will be ignored since data is loaded from a cache file.')
-                except Exception as e:
-                    logging.info('Failed to load data from cache file %s: %s' % (cache_fname, e))
+                except:
+                    logging.exception('Failed to load data from cache file %s', cache_fname)
 
-        # read the header normally from the text file
+        # read the header normally from the text file even if data was loaded from a cache
         try:
-            f = file(self.get_filepath(), 'r')
+          with _open_dat_file(self.get_filepath(), 'r') as f:
+
+            self._dimensions = []
+            self._values = []
+            self._comment = []
+            data = None
+            nfields = 0
+
+            self._block_sizes = []
+            self._npoints = 0
+            self._npoints_last_block = 0
+            self._npoints_max_block = 0
+
+            blocksize = 0
+
+            row_no = -1
+
+            if self._load_row_mask != None:
+                last_row_no_to_parse = self._load_row_mask.nonzero()[0][-1]
+
+            for line in f:
+
+                line = line.rstrip(' \n\t\r')
+
+                # Count blocks
+                if len(line) == 0 and data != None:
+                    self._block_sizes.append(blocksize)
+                    if blocksize > self._npoints_max_block:
+                        self._npoints_max_block = blocksize
+                    blocksize = 0
+
+                # Strip comment
+                commentpos = line.find('#')
+                if commentpos != -1:
+                    self._parse_meta_data(line, line_number = row_no+1 + (-1 if commentpos > 0 else 0))
+                    line = line[:commentpos]
+
+                fields = line.split()
+                if len(fields) > nfields:
+                    nfields = len(fields)
+
+                fields = [float(f) for f in fields]
+                if len(fields) > 0:
+
+                    row_no += 1
+                    if self._load_row_mask != None:
+                      if row_no > last_row_no_to_parse: break # stop parsing
+
+                      if not self._load_row_mask[row_no]:
+                        continue # skip this row
+
+                    if cache != None:
+                        # we are done parsing the header and the first data row
+                        # load rest from the cache and stop parsing the text file
+                        self._data = cache['data']
+                        self._comment = pickle.loads(cache['comment_pickled'])
+                        blocksize = cache['blocksize'][0]
+                        nfields = self._data.shape[1]
+                        break
+
+                    if data == None: # allocate a buffer for the data
+                        # estimate the (max) number of data rows from the file size
+                        n_lines_estimate = 1 + os.path.getsize(self.get_filepath()) / len(line)
+                        if self._load_row_mask != None: # We may not need that much space
+                            n_lines_estimate = numpy.min(( n_lines_estimate,
+                                                           self._load_row_mask.astype(numpy.bool).sum() ))
+                        data = numpy.empty((n_lines_estimate, len(fields))) + numpy.nan
+
+                    if row_no >= len(data):
+                        logging.warn('Failed to estimate the number of data points correctly. Allocating more space...')
+                        data_larger = numpy.empty(( int(numpy.ceil( 1.5*len(data) )), len(fields) )) + numpy.nan
+                        data_larger[:len(data),:] = data[:,:]
+                        data = data_larger
+
+                    data[row_no,:] = numpy.array(fields)
+                    blocksize += 1
+
         except:
-            logging.warning('Unable to open file %s' % self.get_filepath())
-            return False
-
-        self._dimensions = []
-        self._values = []
-        self._comment = []
-        data = None
-        nfields = 0
-
-        self._block_sizes = []
-        self._npoints = 0
-        self._npoints_last_block = 0
-        self._npoints_max_block = 0
-
-        blocksize = 0
-
-        row_no = -1
-
-        if self._load_row_mask != None:
-            last_row_no_to_parse = self._load_row_mask.nonzero()[0][-1]
-
-        for line in f:
-
-            line = line.rstrip(' \n\t\r')
-
-            # Count blocks
-            if len(line) == 0 and data != None:
-                self._block_sizes.append(blocksize)
-                if blocksize > self._npoints_max_block:
-                    self._npoints_max_block = blocksize
-                blocksize = 0
-
-            # Strip comment
-            commentpos = line.find('#')
-            if commentpos != -1:
-                self._parse_meta_data(line, line_number = row_no+1 + (-1 if commentpos > 0 else 0))
-                line = line[:commentpos]
-
-            fields = line.split()
-            if len(fields) > nfields:
-                nfields = len(fields)
-
-            fields = [float(f) for f in fields]
-            if len(fields) > 0:
-
-                row_no += 1
-                if self._load_row_mask != None:
-                  if row_no > last_row_no_to_parse: break # stop parsing
-
-                  if not self._load_row_mask[row_no]:
-                    continue # skip this row
-
-                if cache != None:
-                    # we are done parsing the header and the first data row
-                    # load rest from the cache and stop parsing the text file
-                    self._data = cache['data']
-                    self._comment = pickle.loads(cache['comment_pickled'])
-                    blocksize = cache['blocksize'][0]
-                    nfields = self._data.shape[1]
-                    break
-
-                if data == None: # allocate a buffer for the data
-                    # estimate the (max) number of data rows from the file size
-                    n_lines_estimate = 1 + os.path.getsize(self.get_filepath()) / len(line)
-                    if self._load_row_mask != None: # We may not need that much space
-                        n_lines_estimate = numpy.min(( n_lines_estimate,
-                                                       self._load_row_mask.astype(numpy.bool).sum() ))
-                    data = numpy.empty((n_lines_estimate, len(fields))) + numpy.nan
-
-                if row_no >= len(data):
-                    logging.warn('Failed to estimate the number of data points correctly. Allocating more space...')
-                    data_larger = numpy.empty(( int(numpy.ceil( 1.5*len(data) )), len(fields) )) + numpy.nan
-                    data_larger[:len(data),:] = data[:,:]
-                    data = data_larger
-
-                data[row_no,:] = numpy.array(fields)
-                blocksize += 1
+          logging.exception('Unable to open/parse file %s' % self.get_filepath())
+          return False
 
         self._add_missing_dimensions(nfields)
         self._count_coord_val_dims()
@@ -1416,7 +1436,7 @@ class Data(SharedGObject):
             files = os.listdir(fp)
             foundfile = None
             for fn in files:
-                if os.path.splitext(fn)[1] == '.dat':
+                if 'dat' in fn.split('.')[-2:]:
                     if foundfile is not None:
                         raise ValueError('Multiple .dat files in directory, Unable to decide which one to load')
                     foundfile = fn
@@ -1447,8 +1467,3 @@ class Data(SharedGObject):
     @staticmethod
     def get(name):
         return Data._data_list.get(name)
-
-def slice(data, coords, vals):
-    """
-    Return new data object with a slice of the given data set
-    """
