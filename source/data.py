@@ -42,6 +42,11 @@ from lib.network.object_sharer import SharedGObject, cache_result
 if in_qtlab:
     import qt
 
+
+# New .dat files can be transparently compressed with gzip or bzip2.
+data_compression_format = None # Valid options are None, 'gz', 'bz2'
+
+
 # Filename generator classes
 
 class DateTimeGenerator:
@@ -87,6 +92,10 @@ class DateTimeGenerator:
                 ts=data_obj._localtime)
         tstr = time.strftime('%H%M%S', data_obj._localtime)
         filename = '%s_%s.dat' % (tstr, data_obj._name)
+
+        if data_compression_format != None:
+            assert data_compression_format in ['gz', 'bz2'], 'Unknown compression format %s' % data_compression_format
+            filename += '.' + data_compression_format
 
         return os.path.join(dir, filename)
 
@@ -153,6 +162,16 @@ class _DataList(namedlist.NamedList):
             return item.get_time_name()
         else:
             return name
+
+def _open_dat_file(filename, mode):
+    if filename.endswith('.gz'):
+        import gzip
+        return gzip.GzipFile(filename, mode)
+    elif filename.endswith('.bz2'):
+        import bz2
+        return bz2.BZ2File(filename, mode)
+    else:
+        return open(filename, mode)
 
 class Data(SharedGObject):
     '''
@@ -630,7 +649,7 @@ class Data(SharedGObject):
             os.makedirs(self._dir)
 
         try:
-            self._file = open(self.get_filepath(), 'w+')
+            self._file = _open_dat_file(self.get_filepath(), 'w+')
         except:
             logging.error('Unable to open file')
             return False
@@ -1135,7 +1154,7 @@ class Data(SharedGObject):
 
         # read the header normally from the text file even if data was loaded from a cache
         try:
-          with open(self.get_filepath(), 'r') as f:
+          with _open_dat_file(self.get_filepath(), 'r') as f:
 
             self._dimensions = []
             self._values = []
@@ -1417,7 +1436,7 @@ class Data(SharedGObject):
             files = os.listdir(fp)
             foundfile = None
             for fn in files:
-                if os.path.splitext(fn)[1] == '.dat':
+                if 'dat' in fn.split('.')[-2:]:
                     if foundfile is not None:
                         raise ValueError('Multiple .dat files in directory, Unable to decide which one to load')
                     foundfile = fn
