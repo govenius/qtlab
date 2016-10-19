@@ -42,11 +42,6 @@ from lib.network.object_sharer import SharedGObject, cache_result
 if in_qtlab:
     import qt
 
-
-# New .dat files can be transparently compressed with gzip or bzip2.
-data_compression_format = None # Valid options are None, 'gz', 'bz2'
-
-
 # Filename generator classes
 
 class DateTimeGenerator:
@@ -93,8 +88,9 @@ class DateTimeGenerator:
         tstr = time.strftime('%H%M%S', data_obj._localtime)
         filename = '%s_%s.dat' % (tstr, data_obj._name)
 
+        data_compression_format = config.get('data_compression_format', None)
         if data_compression_format != None:
-            assert data_compression_format in ['gz', 'bz2'], 'Unknown compression format %s' % data_compression_format
+            assert data_compression_format in ['gz'], 'Unknown compression format %s' % data_compression_format
             filename += '.' + data_compression_format
 
         return os.path.join(dir, filename)
@@ -167,9 +163,6 @@ def _open_dat_file(filename, mode):
     if filename.endswith('.gz'):
         import gzip
         return gzip.GzipFile(filename, mode)
-    elif filename.endswith('.bz2'):
-        import bz2
-        return bz2.BZ2File(filename, mode)
     else:
         return open(filename, mode)
 
@@ -651,7 +644,7 @@ class Data(SharedGObject):
         try:
             self._file = _open_dat_file(self.get_filepath(), 'w+')
         except:
-            logging.error('Unable to open file')
+            logging.exception('Unable to open file')
             return False
 
         self._write_header()
