@@ -1448,8 +1448,3 @@ class Data(SharedGObject):
     @staticmethod
     def get(name):
         return Data._data_list.get(name)
-
-def slice(data, coords, vals):
-    """
-    Return new data object with a slice of the given data set
-    """
