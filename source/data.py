@@ -531,8 +531,14 @@ class Data(SharedGObject):
     def get_dir(self):
         return self._dir
 
-    def get_filepath(self):
-        return os.path.join(self._dir, self._filename)
+    def get_filepath(self, without_extension=False):
+        fn = self._filename
+        if without_extension:
+            parts = fn.split('.')
+            if   parts[-1] == 'dat': fn = '.'.join(parts[:-1])
+            elif parts[-2] == 'dat': fn = '.'.join(parts[:-2])
+            else: assert False, '%s does not have a .dat extension' % self._filename
+        return os.path.join(self._dir, fn)
 
     def get_name(self):
         return self._name
@@ -544,11 +550,11 @@ class Data(SharedGObject):
         return '%s_%s' % (self._timemark, self._name)
 
     def get_settings_filepath(self):
-        fn, ext = os.path.splitext(self.get_filepath())
+        fn = self.get_filepath(without_extension=True)
         return fn + '.set'
 
     def get_log_filepath(self):
-        fn, ext = os.path.splitext(self.get_filepath())
+        fn = self.get_filepath(without_extension=True)
         return fn + '.log'
 
     def is_file_open(self):
@@ -667,7 +673,7 @@ class Data(SharedGObject):
                   script_path = stack[j+1][0]
                   with open(script_path, 'r') as script_src:
                     scripts_found += 1
-                    script_out_fname, ext = os.path.splitext(self.get_filepath())
+                    script_out_fname = self.get_filepath(without_extension=True)
                     script_out_fname += '.script%s' % (scripts_found if scripts_found>1 else '')
                     with open(script_out_fname, 'w') as script_dst:
                       print >> script_dst, '# Contents of script: %s' % (script_path)
