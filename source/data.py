@@ -1216,13 +1216,16 @@ class Data(SharedGObject):
                     if data == None: # allocate a buffer for the data
                         # estimate the (max) number of data rows from the file size
                         n_lines_estimate = 1 + os.path.getsize(self.get_filepath()) / len(line)
+                        if not self.get_filepath().endswith('.dat'): n_lines_estimate *= 3 # compressed .dat file
                         if self._load_row_mask != None: # We may not need that much space
                             n_lines_estimate = numpy.min(( n_lines_estimate,
                                                            self._load_row_mask.astype(numpy.bool).sum() ))
                         data = numpy.empty((n_lines_estimate, len(fields))) + numpy.nan
 
                     if row_no >= len(data):
-                        logging.warn('Failed to estimate the number of data points correctly. Allocating more space...')
+                        if self.get_filepath().endswith('.dat') or len(data) > 4*n_lines_estimate:
+                            logging.warn('Failed to estimate the number of data points correctly. '
+                                         'Allocating more space...')
                         data_larger = numpy.empty(( int(numpy.ceil( 1.5*len(data) )), len(fields) )) + numpy.nan
                         data_larger[:len(data),:] = data[:,:]
                         data = data_larger
