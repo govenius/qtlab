@@ -495,6 +495,7 @@ class DataView():
         if deep_copy: d = d.copy()
         return d
 
+    non_numpy_array_warning_given = []
     def add_virtual_dimension(self, name, fn=None, arr=None, comment_regex=None, from_set=None, cache_fn_values=True, return_result=False):
         '''
         Makes a computed vector accessible as self[name].
@@ -546,7 +547,9 @@ class DataView():
               if dtype == np.float: vals += np.nan # initialize to NaN instead of zeros
               prev_val = np.nan
             except:
-              logging.warn("%s does not seem to be a numpy data type. The virtual column '%s' will be a native python array instead, which may be very slow." % (str(dtype), name))
+              if not name in self.non_numpy_array_warning_given:
+                logging.warn("%s does not seem to be a numpy data type. The virtual column '%s' will be a native python array instead, which may be very slow." % (str(dtype), name))
+                self.non_numpy_array_warning_given.append(name)
               vals = [None for jjj in range(len(self._mask))]
               prev_val = None
 
